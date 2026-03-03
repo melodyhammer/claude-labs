@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wrist Anchoring & Stability Simulator</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#111; --muted:#667085; --line:#e5e7eb;
+    --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --pad:#f8fafc;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;}
+  .wrap{max-width:1024px;margin:28px auto;padding:0 16px;}
+  h1{margin:0 0 6px;font-size:24px;font-weight:800;}
+  p.lead{margin:0 0 14px;color:var(--muted)}
+  .grid{display:grid;gap:18px;grid-template-columns:1.1fr .9fr;}
+  .card{border:1px solid var(--line);border-radius:18px;padding:16px 18px;background:#fff}
+  .title{font-weight:700;margin-bottom:10px}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .pill{padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#f6f7f8;
+        font-variant-numeric:tabular-nums}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+  .btn[aria-pressed="true"]{background:#f3f4f6}
+  input[type="range"]{width:220px}
+  canvas{width:100%;height:160px;border:1px solid var(--line);border-radius:12px;background:#fff}
+  /* Child pad */
+  .padWrap{display:grid;place-items:center;height:320px;background:var(--pad);border:1px dashed var(--line);
+           border-radius:16px;position:relative;overflow:hidden}
+  .pad{width:300px;height:300px;background:#fff;border:1px solid var(--line);border-radius:14px;position:relative}
+  .centerText{position:absolute;top:10px;left:12px;color:#475467;font-size:12px}
+  .toast{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+         padding:6px 10px;border-radius:10px;background:#111;color:#fff;font-size:12px;opacity:0.9}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Wrist Anchoring & Stability — Real-Time Feedback</h1>
+  <p class="lead">Goal: keep your wrist steady inside the ring. Green = anchored; yellow = drifting; red = unstable. Move with your mouse/trackpad (or turn on Auto-Drift). On phones you can enable device tilt.</p>
+  <div class="grid">
+    <div class="card">
+      <div class="title">Child View — Keep the Dot in the Ring</div>
+      <div class="padWrap">
+        <div id="pad" class="pad" role="img" aria-label="Wrist stability target pad">
+          <div class="centerText">Hold steady here</div>
+          <div id="toast" class="toast" style="display:none">Nice and steady!</div>
+          <svg id="rings" width="300" height="300" style="position:absolute;inset:0">
+            <defs>
+              <radialGradient id="grad" cx="50%" cy="50%" r="50%">
+                <stop offset="70%" stop-color="#d1fae5"/>
+                <stop offset="100%" stop-color="#ffffff"/>
+              </radialGradient>
+            </defs>
+            <rect width="300" height="300" fill="url(#grad)"></rect>
+            <!-- concentric rings + crosshair -->
+            <g stroke="#e5e7eb">
+              <circle cx="150" cy="150" r="120" fill="none"/>
+              <circle cx="150" cy="150" r="80" fill="none"/>
+              <circle cx="150" cy="150" r="40" fill="none"/>
+              <line x1="0" y1="150" x2="300" y2="150"/>
+              <line x1="150" y1="0" x2="150" y2="300"/>
+            </g>
+            <!-- neutral band -->
+            <circle id="neutral" cx="150" cy="150" r="34" fill="none" stroke="#22c55e" stroke-width="4"/>
+            <!-- moving dot -->
+            <circle id="dot" cx="150" cy="150" r="9" fill="#22c55e" stroke="#0a0a0a" stroke-width="1"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button id="calBtn" class="btn">Calibrate Center</button>
+        <label><strong>Neutral Radius</strong> <input id="radius" type="range" min="12" max="70" value="34"></label>
+        <label><strong>Auto-Drift</strong> <input id="drift" type="range" min="0" max="100" value="25"></label>
+        <button id="autoBtn" class="btn" aria-pressed="true">Auto (On)</button>
+        <button id="tiltBtn" class="btn" aria-pressed="false">Use Device Tilt</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="pill">Distance: <span id="dist">0.0</span> px</span>
+        <span class="pill">Stability Index (RMS): <span id="stab">0.00</span></span>
+        <span class="pill">Streak Anchored: <span id="streak">0.0s</span></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">Therapist View — Stability Over Time</div>
+      <canvas id="chart" width="700" height="160"></canvas>
+      <p class="lead" style="font-size:13px;margin-top:8px">Dashed line = instability threshold. When the stability index crosses the threshold, the dot turns red and the pad gives corrective feedback.</p>
+      <div class="row" style="margin-top:6px">
+        <label><strong>Threshold</strong> <input id="thresh" type="range" min="5" max="60" value="22"></label>
+        <span class="pill">Threshold: <span id="thLabel">22</span></span>
+        <button id="reset" class="btn">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Elements
+  const svg = document.getElementById('rings');
+  const dot = document.getElementById('dot');
+  const neutral = document.getElementById('neutral');
+  const pad = document.getElementById('pad');
+  const toast = document.getElementById('toast');
+
+  const radiusSlider = document.getElementById('radius');
+  const driftSlider  = document.getElementById('drift');
+  const autoBtn      = document.getElementById('autoBtn');
+  const tiltBtn      = document.getElementById('tiltBtn');
+  const calBtn       = document.getElementById('calBtn');
+
+  const distEl  = document.getElementById('dist');
+  const stabEl  = document.getElementById('stab');
+  const streakEl= document.getElementById('streak');
+
+  const threshSlider = document.getElementById('thresh');
+  const thLabel = document.getElementById('thLabel');
+  const resetBtn = document.getElementById('reset');
+
+  // Chart
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+
+  // Geometry
+  const W = 300, H = 300;
+  let center = {x: W/2, y: H/2};
+  let pos = {x: W/2, y: H/2};
+  let vx = 0, vy = 0;
+  let neutralR = parseFloat(radiusSlider.value);
+
+  // Stability index parameters (rolling RMS of distance over last N frames)
+  const maxPts = 360;
+  const history = [];
+  const rmsWindow = 40; // samples
+  let instabilityThreshold = parseInt(threshSlider.value); // in pixels
+  thLabel.textContent = instabilityThreshold;
+
+  // Interaction
+  let useAuto = true;
+  let useTilt = false;
+  let mouseDown = false;
+  let streakStart = performance.now();
+
+  pad.addEventListener('mousedown', (e)=>{ mouseDown = true; setPosFromEvent(e); });
+  window.addEventListener('mouseup', ()=> mouseDown = false);
+  window.addEventListener('mousemove', (e)=>{ if(mouseDown) setPosFromEvent(e); });
+
+  function setPosFromEvent(e){
+    const rect = svg.getBoundingClientRect();
+    pos.x = Math.max(0, Math.min(W, e.clientX - rect.left));
+    pos.y = Math.max(0, Math.min(H, e.clientY - rect.top));
+  }
+
+  // Device tilt
+  let tiltBase = {beta:0, gamma:0};
+  tiltBtn.addEventListener('click', async ()=>{
+    useTilt = !useTilt;
+    tiltBtn.setAttribute('aria-pressed', String(useTilt));
+    if(useTilt && typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission){
+      try{ await DeviceOrientationEvent.requestPermission(); }catch(e){ console.log(e); }
+    }
+  });
+  window.addEventListener('deviceorientation', (e)=>{
+    if(!useTilt) return;
+    const beta = (e.beta||0), gamma = (e.gamma||0);
+    // on first use, set baseline
+    if(tiltBase.beta===0 && tiltBase.gamma===0){ tiltBase={beta,gamma}; }
+    const dx = (gamma - tiltBase.gamma);
+    const dy = (beta - tiltBase.beta);
+    pos.x = Math.max(0, Math.min(W, center.x + dx*3));
+    pos.y = Math.max(0, Math.min(H, center.y + dy*3));
+  });
+
+  // Auto drift
+  autoBtn.addEventListener('click', ()=>{
+    useAuto = !useAuto;
+    autoBtn.setAttribute('aria-pressed', String(useAuto));
+    autoBtn.textContent = useAuto ? 'Auto (On)' : 'Auto (Off)';
+  });
+
+  // Calibration & controls
+  calBtn.addEventListener('click', ()=>{ center = {...pos}; });
+  radiusSlider.addEventListener('input', e=>{
+    neutralR = parseFloat(e.target.value);
+    neutral.setAttribute('r', neutralR);
+  });
+  driftSlider.addEventListener('input', ()=>{});
+  threshSlider.addEventListener('input', e=>{
+    instabilityThreshold = parseInt(e.target.value);
+    thLabel.textContent = instabilityThreshold;
+  });
+  resetBtn.addEventListener('click', ()=>{
+    center = {x:W/2,y:H/2}; pos={...center}; vx=vy=0;
+    history.length = 0; streakStart = performance.now();
+  });
+
+  // Utilities
+  const clamp = (v,min,max)=> Math.max(min, Math.min(max, v));
+  const lerp = (a,b,t)=> a + (b-a)*t;
+
+  // Drawing helpers
+  function drawDot(){
+    dot.setAttribute('cx', pos.x.toFixed(2));
+    dot.setAttribute('cy', pos.y.toFixed(2));
+  }
+
+  function updateColor(dist){
+    let color = getComputedStyle(document.documentElement).getPropertyValue('--good').trim();
+    if(dist > neutralR) color = getComputedStyle(document.documentElement).getPropertyValue('--warn').trim();
+    if(dist > instabilityThreshold) color = getComputedStyle(document.documentElement).getPropertyValue('--bad').trim();
+    dot.setAttribute('fill', color);
+    return color;
+  }
+
+  function pushHistory(dist){
+    history.push(dist);
+    if(history.length > maxPts) history.shift();
+  }
+
+  function rollingRMS(arr, window){
+    if(arr.length===0) return 0;
+    const start = Math.max(0, arr.length-window);
+    let sum = 0;
+    for(let i=start;i<arr.length;i++){ sum += arr[i]*arr[i]; }
+    const n = arr.length - start;
+    return Math.sqrt(sum / n);
+  }
+
+  function renderChart(){
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    // grid
+    ctx.strokeStyle = '#eef2f7'; ctx.lineWidth = 1;
+    for(let i=1;i<6;i++){ const y = (h/6)*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+    // threshold
+    const thY = h - (instabilityThreshold / 100) * h; // expect ~0..100 px range scaled
+    ctx.strokeStyle = '#ef4444'; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(0, thY); ctx.lineTo(w, thY); ctx.stroke(); ctx.setLineDash([]);
+
+    // series (distance)
+    if(history.length>1){
+      ctx.strokeStyle = '#1f77b4'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      const stepX = w / (maxPts-1);
+      history.forEach((v,i)=>{
+        const x = i*stepX;
+        const y = h - (v/100)*h;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    }
+  }
+
+  function step(now){
+    // Auto motion: smooth drift + noise to mimic micro-movements
+    if(useAuto){
+      const amt = parseInt(driftSlider.value,10) / 100; // 0..1
+      vx = lerp(vx, (Math.random()-0.5)*2*amt, 0.15);
+      vy = lerp(vy, (Math.random()-0.5)*2*amt, 0.15);
+      pos.x = clamp(pos.x + vx, 0, W);
+      pos.y = clamp(pos.y + vy, 0, H);
+    }
+
+    // Distance from calibrated center
+    const dx = pos.x - center.x;
+    const dy = pos.y - center.y;
+    const dist = Math.sqrt(dx*dx + dy*dy); // in px (our unit)
+    distEl.textContent = dist.toFixed(1);
+
+    // Stability index = rolling RMS of distance
+    pushHistory(dist);
+    const rms = rollingRMS(history, rmsWindow);
+    stabEl.textContent = rms.toFixed(2);
+
+    // Streak (anchored inside neutral ring)
+    const anchored = dist <= neutralR;
+    if(anchored){
+      dot.setAttribute('stroke','#0a0a0a');
+      if(toast.style.display==='none'){ toast.style.display='block'; toast.textContent='Nice and steady!'; }
+    } else {
+      toast.style.display='none';
+    }
+    const color = updateColor(dist);
+
+    if(anchored){
+      // update streak
+      const secs = (now - streakStart)/1000;
+      streakEl.textContent = secs.toFixed(1)+'s';
+    } else {
+      streakStart = now;
+      streakEl.textContent = '0.0s';
+    }
+
+    // Draw dot
+    drawDot();
+    // Chart
+    renderChart();
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
