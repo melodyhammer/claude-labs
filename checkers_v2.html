@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkers v2 — Gesture Control</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: rgba(255,255,255,.08);
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --shadow: 0 8px 32px rgba(0,0,0,.5);
+  --radius: 16px;
+  --pinch-color: #f59e0b;
+  --select-color: #22c55e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 16px 32px;
+  gap: 12px;
+}
+h1 { font-size: 21px; font-weight: 700; letter-spacing: .4px; }
+
+/* scoreboard */
+.scoreboard {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 28px;
+  width: 100%; max-width: 512px; box-shadow: var(--shadow);
+}
+.side { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.side-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
+.side-score { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.red-score  { color: #f85149; }
+.dark-score { color: #8b949e; }
+.side-sub   { font-size: 11px; color: var(--muted); }
+.status-text { font-size: 13px; color: var(--muted); font-style: italic; text-align: center; min-width: 110px; }
+
+/* sensor panel */
+.sensor-panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+  width: 100%; max-width: 512px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.sensor-top {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.sensor-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #3f3f46; flex: none; transition: background .25s;
+}
+.sensor-dot.connected { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+.sensor-dot.pinch     { background: var(--pinch-color); box-shadow: 0 0 8px #f59e0b99; }
+.sensor-dot.select    { background: var(--select-color); box-shadow: 0 0 8px #22c55e99; }
+.sensor-label { font-size: 12px; color: var(--muted); }
+.sensor-val {
+  font-family: ui-monospace, monospace; font-size: 13px;
+  color: var(--text); min-width: 58px;
+}
+.sensor-state {
+  font-family: ui-monospace, monospace; font-size: 12px;
+  color: var(--muted); min-width: 64px;
+}
+
+/* value bar */
+.value-bar-wrap {
+  flex: 1; position: relative; height: 18px;
+  background: rgba(255,255,255,.04); border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.08); overflow: hidden;
+}
+.value-bar-fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  transition: width .07s linear;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+/* threshold markers drawn via CSS custom props */
+.threshold-marker {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  border-radius: 1px; pointer-events: none;
+}
+.marker-pinch   { background: var(--pinch-color); }
+.marker-select  { background: var(--select-color); }
+
+/* thresholds row */
+.thresh-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.thresh-group { display: flex; flex-direction: column; gap: 4px; }
+.thresh-label {
+  font-size: 11px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase;
+}
+.thresh-label.pinch  { color: var(--pinch-color); }
+.thresh-label.select { color: var(--select-color); }
+.thresh-input-row { display: flex; align-items: center; gap: 8px; }
+input[type="range"] { flex: 1; accent-color: var(--pinch-color); }
+.thresh-group:nth-child(2) input[type="range"] { accent-color: var(--select-color); }
+.thresh-val {
+  font-family: ui-monospace, monospace; font-size: 12px;
+  color: var(--muted); min-width: 36px; text-align: right;
+}
+.btn-cal {
+  font-size: 11px; padding: 4px 10px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.04);
+  color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+.btn-cal:hover { background: rgba(255,255,255,.08); color: var(--text); }
+
+/* gesture guide */
+.gesture-guide {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.gesture-chip {
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03); border-radius: 999px;
+  padding: 5px 10px; font-size: 11px; color: var(--muted);
+}
+.gesture-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.scan-hint { font-size: 12px; color: var(--muted); font-style: italic; margin-left: auto; }
+
+/* canvas */
+#canvas {
+  border-radius: 10px;
+  box-shadow: var(--shadow), 0 0 0 1px rgba(255,255,255,.06);
+  cursor: pointer; display: block;
+  width: min(512px, calc(100vw - 32px));
+  height: min(512px, calc(100vw - 32px));
+}
+.btn-row { display: flex; gap: 10px; }
+.btn {
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--text); padding: 10px 22px; border-radius: 10px;
+  cursor: pointer; font-size: 14px; font-weight: 600; box-shadow: var(--shadow);
+}
+.btn:hover  { background: #21262d; }
+.btn:active { transform: translateY(1px); }
+.btn-connect { padding: 7px 14px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Checkers — Gesture Control</h1>
+
+<div class="scoreboard">
+  <div class="side">
+    <span class="side-label">You</span>
+    <span class="side-score red-score" id="pCaps">0</span>
+    <span class="side-sub">captured</span>
+  </div>
+  <span class="status-text" id="status">Your turn</span>
+  <div class="side">
+    <span class="side-label">CPU</span>
+    <span class="side-score dark-score" id="cCaps">0</span>
+    <span class="side-sub">captured</span>
+  </div>
+</div>
+
+<!-- Sensor panel -->
+<div class="sensor-panel">
+
+  <div class="sensor-top">
+    <div class="sensor-dot" id="sensorDot"></div>
+    <span class="sensor-label" id="sensorLabel">Disconnected</span>
+    <div class="value-bar-wrap" id="barWrap">
+      <div class="value-bar-fill" id="valueFill"></div>
+      <div class="threshold-marker marker-pinch"  id="markerPinch"></div>
+      <div class="threshold-marker marker-select" id="markerSelect"></div>
+    </div>
+    <span class="sensor-val"   id="sensorVal">0</span>
+    <span class="sensor-state" id="sensorState">State: --</span>
+    <button class="btn btn-connect" id="connectBtn">Connect</button>
+  </div>
+
+  <div class="thresh-row">
+    <div class="thresh-group">
+      <span class="thresh-label pinch">Pinch threshold</span>
+      <div class="thresh-input-row">
+        <input type="range" id="pinchSlider" min="10" max="900" value="80">
+        <span class="thresh-val" id="pinchVal">80</span>
+        <button class="btn-cal" id="calPinch">Set from live</button>
+      </div>
+    </div>
+    <div class="thresh-group">
+      <span class="thresh-label select">Select (extend) threshold</span>
+      <div class="thresh-input-row">
+        <input type="range" id="selectSlider" min="50" max="1000" value="400">
+        <span class="thresh-val" id="selectVal">400</span>
+        <button class="btn-cal" id="calSelect">Set from live</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="gesture-guide">
+    <div class="gesture-chip">
+      <span class="dot" style="background:var(--pinch-color)"></span>
+      Pinch → cycle piece / move
+    </div>
+    <div class="gesture-chip">
+      <span class="dot" style="background:var(--select-color)"></span>
+      Extend (open hand) → confirm
+    </div>
+    <span class="scan-hint" id="scanHint"></span>
+  </div>
+
+</div>
+
+<canvas id="canvas" width="512" height="512"></canvas>
+
+<div class="btn-row">
+  <button class="btn" id="newBtn">New Game</button>
+</div>
+
+<script>
+'use strict';
+
+const CELL = 64, N = 8;
+const cv  = document.getElementById('canvas');
+const ctx = cv.getContext('2d');
+cv.width = cv.height = N * CELL;
+
+const EMPTY = 0, P = 1, PK = 2, C = -1, CK = -2;
+
+// Game state
+let board, sel, hilights, pCaps, cCaps, turn, mjPiece, over;
+
+// Sensor state
+let serialConnected = false;
+let liveValue       = 0;
+let pinchThresh     = 80;
+let selectThresh    = 400;
+let currentZone     = 'rest';   // 'rest' | 'pinch' | 'select'
+let lastPinchTime   = 0;
+let lastSelectTime  = 0;
+const GESTURE_COOLDOWN = 700; // ms between same gesture
+
+// Scan state (no auto-timer — purely gesture driven)
+let scanPhase  = null;   // 'pieces' | 'moves'
+let scanItems  = [];
+let scanIndex  = 0;
+let activeScan = null;
+
+/* ─────────────────────────────────────────
+   INIT
+───────────────────────────────────────── */
+function newGame() {
+  board = Array.from({length: N}, () => new Array(N).fill(EMPTY));
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < N; c++)
+      if ((r + c) % 2 === 1) board[r][c] = C;
+  for (let r = 5; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if ((r + c) % 2 === 1) board[r][c] = P;
+  sel = null; hilights = []; pCaps = 0; cCaps = 0;
+  turn = 'player'; mjPiece = null; over = false;
+  clearScan();
+  setStatus('Your turn');
+  updateScore();
+  if (serialConnected && turn === 'player') initPieceScan();
+  render();
+}
+
+/* ─────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────── */
+const isP    = p => p === P  || p === PK;
+const isC    = p => p === C  || p === CK;
+const isKing = p => p === PK || p === CK;
+const oob    = (r, c) => r < 0 || r >= N || c < 0 || c >= N;
+const isOpp  = (a, b) => (isP(a) && isC(b)) || (isC(a) && isP(b));
+
+function dirs(piece) {
+  if (isKing(piece)) return [[-1,-1],[-1,1],[1,-1],[1,1]];
+  return isP(piece) ? [[-1,-1],[-1,1]] : [[1,-1],[1,1]];
+}
+
+/* ─────────────────────────────────────────
+   MOVE GENERATION
+───────────────────────────────────────── */
+function rawMoves(r, c, b) {
+  const p = b[r][c], moves = [], jumps = [];
+  for (const [dr, dc] of dirs(p)) {
+    const nr = r+dr, nc = c+dc;
+    if (oob(nr, nc)) continue;
+    if (b[nr][nc] === EMPTY) {
+      moves.push({r: nr, c: nc, cap: null});
+    } else if (isOpp(p, b[nr][nc])) {
+      const jr = r+2*dr, jc = c+2*dc;
+      if (!oob(jr, jc) && b[jr][jc] === EMPTY)
+        jumps.push({r: jr, c: jc, cap: {r: nr, c: nc}});
+    }
+  }
+  return {moves, jumps};
+}
+
+function sideHasJump(forPlayer, b) {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (forPlayer  && !isP(b[r][c])) continue;
+      if (!forPlayer && !isC(b[r][c])) continue;
+      if (rawMoves(r, c, b).jumps.length > 0) return true;
+    }
+  return false;
+}
+
+function validFor(r, c, b) {
+  const {moves, jumps} = rawMoves(r, c, b);
+  if (sideHasJump(isP(b[r][c]), b)) return jumps;
+  return moves;
+}
+
+/* ─────────────────────────────────────────
+   APPLY MOVE
+───────────────────────────────────────── */
+function applyMove(b, fr, fc, tr, tc, cap) {
+  const nb = b.map(row => [...row]);
+  const piece = nb[fr][fc];
+  nb[tr][tc] = piece;
+  nb[fr][fc] = EMPTY;
+  if (cap) nb[cap.r][cap.c] = EMPTY;
+  if (piece === P  && tr === 0)   nb[tr][tc] = PK;
+  if (piece === C  && tr === N-1) nb[tr][tc] = CK;
+  return nb;
+}
+
+/* ─────────────────────────────────────────
+   WIN DETECTION
+───────────────────────────────────────── */
+function anyMove(forPlayer, b) {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (forPlayer  && !isP(b[r][c])) continue;
+      if (!forPlayer && !isC(b[r][c])) continue;
+      const {moves, jumps} = rawMoves(r, c, b);
+      if (moves.length || jumps.length) return true;
+    }
+  return false;
+}
+
+function pieceCount(b) {
+  let p = 0, c = 0;
+  for (let r = 0; r < N; r++)
+    for (let cc = 0; cc < N; cc++) { if (isP(b[r][cc])) p++; if (isC(b[r][cc])) c++; }
+  return {p, c};
+}
+
+function checkWin(b) {
+  const {p, c} = pieceCount(b);
+  if (c === 0 || !anyMove(false, b)) return 'player';
+  if (p === 0 || !anyMove(true,  b)) return 'cpu';
+  return null;
+}
+
+/* ─────────────────────────────────────────
+   SCAN STATE  (gesture-driven, no timer)
+───────────────────────────────────────── */
+function clearScan() {
+  scanPhase = null; scanItems = []; scanIndex = 0; activeScan = null;
+}
+
+function initPieceScan() {
+  if (!serialConnected || over) return;
+  clearScan();
+  const pieces = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (isP(board[r][c]) && validFor(r, c, board).length > 0)
+        pieces.push({r, c});
+  if (!pieces.length) return;
+  scanPhase  = 'pieces';
+  scanItems  = pieces;
+  scanIndex  = 0;
+  activeScan = pieces[0];
+  sel        = activeScan;
+  hilights   = validFor(activeScan.r, activeScan.c, board);
+  setScanHint(`Piece 1 / ${pieces.length} — pinch to cycle`);
+  render();
+}
+
+function initMoveScan(pr, pc) {
+  clearScan();
+  const moves = validFor(pr, pc, board);
+  if (!moves.length) return;
+  sel        = {r: pr, c: pc};
+  hilights   = moves;
+  scanPhase  = 'moves';
+  scanItems  = moves;
+  scanIndex  = 0;
+  activeScan = moves[0];
+  setScanHint(`Move 1 / ${moves.length} — pinch to cycle, extend to confirm`);
+  render();
+}
+
+function initJumpScan(pr, pc, jumps) {
+  clearScan();
+  sel        = {r: pr, c: pc};
+  hilights   = jumps;
+  scanPhase  = 'moves';
+  scanItems  = jumps;
+  scanIndex  = 0;
+  activeScan = jumps[0];
+  setScanHint(`Jump 1 / ${jumps.length} — pinch to cycle, extend to confirm`);
+  render();
+}
+
+/* ─────────────────────────────────────────
+   GESTURE HANDLERS
+───────────────────────────────────────── */
+function onPinch() {
+  if (over || turn !== 'player' || !scanPhase) return;
+  const now = Date.now();
+  if (now - lastPinchTime < GESTURE_COOLDOWN) return;
+  lastPinchTime = now;
+
+  scanIndex = (scanIndex + 1) % scanItems.length;
+  activeScan = scanItems[scanIndex];
+
+  if (scanPhase === 'pieces') {
+    sel      = activeScan;
+    hilights = validFor(activeScan.r, activeScan.c, board);
+    setScanHint(`Piece ${scanIndex + 1} / ${scanItems.length} — pinch to cycle`);
+  } else {
+    setScanHint(`Move ${scanIndex + 1} / ${scanItems.length} — pinch to cycle, extend to confirm`);
+  }
+  render();
+}
+
+function onSelect() {
+  if (over || turn !== 'player' || !scanPhase) return;
+  const now = Date.now();
+  if (now - lastSelectTime < GESTURE_COOLDOWN) return;
+  lastSelectTime = now;
+
+  if (scanPhase === 'pieces') {
+    // Confirm piece → switch to move scan
+    initMoveScan(activeScan.r, activeScan.c);
+  } else if (scanPhase === 'moves') {
+    // Confirm move
+    const mv = activeScan;
+    clearScan();
+    if (mjPiece) doPlayerStep(mjPiece.r, mjPiece.c, mv);
+    else         doPlayerStep(sel.r, sel.c, mv);
+  }
+}
+
+/* ─────────────────────────────────────────
+   MOUSE CONTROL (kept intact)
+───────────────────────────────────────── */
+cv.addEventListener('click', e => {
+  if (over || turn !== 'player') return;
+  const rect = cv.getBoundingClientRect();
+  const sx = cv.width / rect.width, sy = cv.height / rect.height;
+  const col = Math.floor((e.clientX - rect.left) * sx / CELL);
+  const row = Math.floor((e.clientY - rect.top)  * sy / CELL);
+  if (oob(row, col)) return;
+
+  if (mjPiece) {
+    const mv = hilights.find(h => h.r === row && h.c === col);
+    if (mv) { clearScan(); doPlayerStep(mjPiece.r, mjPiece.c, mv); }
+    return;
+  }
+  if (sel) {
+    const mv = hilights.find(h => h.r === row && h.c === col);
+    if (mv) { clearScan(); doPlayerStep(sel.r, sel.c, mv); return; }
+  }
+  if (isP(board[row][col])) {
+    const moves = validFor(row, col, board);
+    if (moves.length) {
+      clearScan();
+      sel = {r: row, c: col}; hilights = moves;
+      if (serialConnected) initMoveScan(row, col);
+      else render();
+    } else { sel = null; hilights = []; render(); }
+  } else { sel = null; hilights = []; render(); }
+});
+
+/* ─────────────────────────────────────────
+   PLAYER STEP
+───────────────────────────────────────── */
+function doPlayerStep(fr, fc, mv) {
+  const prevPiece = board[fr][fc];
+  const wasJump   = !!mv.cap;
+  board = applyMove(board, fr, fc, mv.r, mv.c, mv.cap);
+  if (wasJump) { pCaps++; updateScore(); }
+
+  const becameKing = prevPiece === P && board[mv.r][mv.c] === PK;
+
+  if (wasJump && !becameKing) {
+    const nextJ = rawMoves(mv.r, mv.c, board).jumps;
+    if (nextJ.length) {
+      sel = {r: mv.r, c: mv.c}; hilights = nextJ; mjPiece = {r: mv.r, c: mv.c};
+      if (serialConnected) initJumpScan(mv.r, mv.c, nextJ);
+      else render();
+      return;
+    }
+  }
+
+  sel = null; hilights = []; mjPiece = null;
+  clearScan(); setScanHint('');
+  const w = checkWin(board);
+  if (w) { render(); endGame(w); return; }
+
+  turn = 'cpu';
+  setStatus('CPU thinking…');
+  render();
+  setTimeout(doCpu, 520);
+}
+
+/* ─────────────────────────────────────────
+   CPU AI
+───────────────────────────────────────── */
+function cpuCandidates(b, forced) {
+  const simple = [], jumps = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (!isC(b[r][c])) continue;
+      if (forced && (r !== forced.r || c !== forced.c)) continue;
+      const {moves, jumps: jj} = rawMoves(r, c, b);
+      for (const m of jj)    jumps.push({fr:r, fc:c, tr:m.r, tc:m.c, cap:m.cap});
+      for (const m of moves)  simple.push({fr:r, fc:c, tr:m.r, tc:m.c, cap:null});
+    }
+  return jumps.length ? jumps : simple;
+}
+
+function scoreCpuMove(mv, b) {
+  let s = 0;
+  if (mv.cap) s += 10;
+  if (b[mv.fr][mv.fc] === C && mv.tr === N-1) s += 6;
+  s += mv.tr * 0.3;
+  if (mv.tc === 0 || mv.tc === N-1) s += 0.4;
+  s += Math.random() * 0.5;
+  return s;
+}
+
+function doCpu(forced) {
+  if (over) return;
+  const moves = cpuCandidates(board, forced);
+  if (!moves.length) { endGame('player'); return; }
+
+  let best = null, bestS = -Infinity;
+  for (const mv of moves) { const s = scoreCpuMove(mv, board); if (s > bestS) { bestS = s; best = mv; } }
+
+  const prevPiece = board[best.fr][best.fc];
+  const wasJump   = !!best.cap;
+  board = applyMove(board, best.fr, best.fc, best.tr, best.tc, best.cap);
+  if (wasJump) { cCaps++; updateScore(); }
+
+  const w = checkWin(board);
+  if (w) { render(); endGame(w); return; }
+
+  const becameKing = prevPiece === C && board[best.tr][best.tc] === CK;
+  if (wasJump && !becameKing) {
+    const nextJ = rawMoves(best.tr, best.tc, board).jumps;
+    if (nextJ.length) { render(); setTimeout(() => doCpu({r: best.tr, c: best.tc}), 380); return; }
+  }
+
+  turn = 'player';
+  setStatus('Your turn');
+  render();
+  if (!anyMove(true, board)) { endGame('cpu'); return; }
+  if (serialConnected) initPieceScan();
+}
+
+/* ─────────────────────────────────────────
+   WEB SERIAL API
+───────────────────────────────────────── */
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  if (!('serial' in navigator)) {
+    alert('Web Serial only works in Chrome or Edge.\nOpen this page in Chrome.');
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 9600 });
+
+    serialConnected = true;
+    document.getElementById('sensorDot').classList.add('connected');
+    document.getElementById('sensorLabel').textContent = 'Connected — MyoWare 2.0';
+    document.getElementById('connectBtn').textContent  = 'Connected ✓';
+    document.getElementById('connectBtn').disabled     = true;
+
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable);
+    const reader = decoder.readable.getReader();
+    let buf = '';
+
+    (async () => {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += value;
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) parseSerial(line.trim());
+        }
+      } catch { /* port closed */ }
+    })();
+
+    if (turn === 'player' && !over) initPieceScan();
+
+  } catch (err) {
+    if (err.name !== 'NotFoundError') alert('Could not open port: ' + err.message);
+  }
+});
+
+function parseSerial(line) {
+  // "Value: 16  |  State: A"
+  const vm = line.match(/Value:\s*(\d+)/);
+  const sm = line.match(/State:\s*(\w+)/);
+  if (!vm || !sm) return;
+
+  const value = parseInt(vm[1]);
+  const state = sm[1];
+  liveValue = value;
+
+  // Update bar & readout
+  const pct = Math.min(value / 10.23, 100);
+  document.getElementById('valueFill').style.width  = pct + '%';
+  document.getElementById('sensorVal').textContent  = value;
+  document.getElementById('sensorState').textContent = 'State: ' + state;
+
+  // Zone detection (rising edge only — fires once per gesture)
+  const dot = document.getElementById('sensorDot');
+  let newZone = 'rest';
+  if (value >= selectThresh)      newZone = 'select';
+  else if (value >= pinchThresh)  newZone = 'pinch';
+
+  if (newZone !== currentZone) {
+    if (newZone === 'pinch') {
+      dot.classList.remove('select'); dot.classList.add('pinch');
+      onPinch();
+    } else if (newZone === 'select') {
+      dot.classList.remove('pinch'); dot.classList.add('select');
+      onSelect();
+    } else {
+      dot.classList.remove('pinch', 'select');
+    }
+    currentZone = newZone;
+  }
+}
+
+/* ─────────────────────────────────────────
+   THRESHOLD CONTROLS
+───────────────────────────────────────── */
+function updateMarkers() {
+  const w = document.getElementById('barWrap').offsetWidth;
+  document.getElementById('markerPinch').style.left  = Math.min(pinchThresh  / 10.23, 100) + '%';
+  document.getElementById('markerSelect').style.left = Math.min(selectThresh / 10.23, 100) + '%';
+}
+
+const pinchSlider  = document.getElementById('pinchSlider');
+const selectSlider = document.getElementById('selectSlider');
+
+pinchSlider.addEventListener('input', () => {
+  pinchThresh = +pinchSlider.value;
+  document.getElementById('pinchVal').textContent = pinchThresh;
+  updateMarkers();
+});
+selectSlider.addEventListener('input', () => {
+  selectThresh = +selectSlider.value;
+  document.getElementById('selectVal').textContent = selectThresh;
+  updateMarkers();
+});
+
+document.getElementById('calPinch').addEventListener('click', () => {
+  if (liveValue < 10) { alert('No signal — connect sensor first and perform a pinch.'); return; }
+  pinchThresh = Math.max(10, Math.round(liveValue * 0.7));
+  pinchSlider.value = pinchThresh;
+  document.getElementById('pinchVal').textContent = pinchThresh;
+  updateMarkers();
+});
+
+document.getElementById('calSelect').addEventListener('click', () => {
+  if (liveValue < 10) { alert('No signal — connect sensor first and extend your hand.'); return; }
+  selectThresh = Math.max(pinchThresh + 20, Math.round(liveValue * 0.75));
+  selectSlider.value = selectThresh;
+  document.getElementById('selectVal').textContent = selectThresh;
+  updateMarkers();
+});
+
+// Init marker positions after layout
+window.addEventListener('load', updateMarkers);
+window.addEventListener('resize', updateMarkers);
+
+/* ─────────────────────────────────────────
+   UI HELPERS
+───────────────────────────────────────── */
+function endGame(winner) {
+  over = true; clearScan(); setScanHint('');
+  setStatus(winner === 'player' ? '🎉 You win!' : '🤖 CPU wins!');
+  render();
+}
+function setStatus(msg)  { document.getElementById('status').textContent   = msg; }
+function setScanHint(msg){ document.getElementById('scanHint').textContent = msg; }
+function updateScore()   {
+  document.getElementById('pCaps').textContent = pCaps;
+  document.getElementById('cCaps').textContent = cCaps;
+}
+
+/* ─────────────────────────────────────────
+   RENDERING
+───────────────────────────────────────── */
+function render() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#f0d9b5' : '#b58863';
+      ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+    }
+
+  // Move highlights
+  for (const h of hilights) {
+    const isActive = activeScan && scanPhase === 'moves' &&
+                     h.r === activeScan.r && h.c === activeScan.c;
+    ctx.fillStyle = isActive ? 'rgba(34,197,94,.40)' : 'rgba(255,220,0,.34)';
+    ctx.fillRect(h.c * CELL, h.r * CELL, CELL, CELL);
+    ctx.beginPath();
+    ctx.arc(h.c*CELL + CELL/2, h.r*CELL + CELL/2, isActive ? 15 : 10, 0, Math.PI*2);
+    ctx.fillStyle = isActive ? 'rgba(34,220,100,.92)' : 'rgba(255,200,0,.82)';
+    ctx.fill();
+  }
+
+  // Selected piece ring
+  if (sel) {
+    ctx.strokeStyle = 'rgba(255,255,80,.7)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(sel.c*CELL + 2, sel.r*CELL + 2, CELL-4, CELL-4);
+  }
+
+  // Pieces
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (board[r][c] !== EMPTY) drawPiece(r, c, board[r][c]);
+
+  // Active scan cursor ring (piece phase)
+  if (activeScan && scanPhase === 'pieces') {
+    const x = activeScan.c * CELL + CELL/2;
+    const y = activeScan.r * CELL + CELL/2;
+    ctx.beginPath();
+    ctx.arc(x, y, CELL/2 - 3, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(34,220,100,.95)';
+    ctx.lineWidth   = 3.5;
+    ctx.stroke();
+    // Outer glow
+    ctx.beginPath();
+    ctx.arc(x, y, CELL/2, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(34,220,100,.25)';
+    ctx.lineWidth   = 6;
+    ctx.stroke();
+  }
+
+  if (over) {
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+  }
+}
+
+function drawPiece(r, c, piece) {
+  const x = c*CELL + CELL/2, y = r*CELL + CELL/2, rad = CELL/2 - 6;
+  ctx.beginPath();
+  ctx.arc(x + 1.5, y + 3, rad, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(0,0,0,.38)'; ctx.fill();
+
+  const red = isP(piece);
+  const g   = ctx.createRadialGradient(x - rad*.28, y - rad*.3, rad*.06, x, y, rad);
+  if (red) { g.addColorStop(0, '#ff6b6b'); g.addColorStop(1, '#b71c1c'); }
+  else     { g.addColorStop(0, '#546e7a'); g.addColorStop(1, '#102027'); }
+  ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI*2);
+  ctx.fillStyle = g; ctx.fill();
+
+  ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI*2);
+  ctx.strokeStyle = red ? '#7f0000' : '#000a12'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.beginPath(); ctx.arc(x, y, rad - 5, 0, Math.PI*2);
+  ctx.strokeStyle = red ? 'rgba(255,160,160,.22)' : 'rgba(255,255,255,.07)';
+  ctx.lineWidth = 1.5; ctx.stroke();
+
+  if (isKing(piece)) {
+    ctx.font = `bold ${Math.round(CELL*.36)}px serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4;
+    ctx.fillStyle = '#ffd700'; ctx.fillText('♛', x, y + 1);
+    ctx.shadowBlur = 0;
+  }
+}
+
+document.getElementById('newBtn').addEventListener('click', newGame);
+newGame();
+</script>
+</body>
+</html>
