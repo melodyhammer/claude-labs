@@ -180,6 +180,8 @@ input[type="range"] { flex: 1; accent-color: var(--pinch-color); }
     <span class="sensor-state" id="sensorState">State: --</span>
     <button class="btn btn-connect" id="connectBtn">Connect</button>
   </div>
+  <div style="font-family:ui-monospace,monospace;font-size:11px;color:#3f4f60;min-height:14px" id="rawLine">no data yet</div>
+  </div>
 
   <div class="thresh-row">
     <div class="thresh-group">
@@ -588,9 +590,8 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     document.getElementById('connectBtn').textContent  = 'Connected ✓';
     document.getElementById('connectBtn').disabled     = true;
 
-    const decoder = new TextDecoderStream();
-    port.readable.pipeTo(decoder.writable);
-    const reader = decoder.readable.getReader();
+    const reader  = port.readable.getReader();
+    const decoder = new TextDecoder();
     let buf = '';
 
     (async () => {
@@ -598,12 +599,16 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          buf += value;
+          buf += decoder.decode(value, { stream: true });
           const lines = buf.split('\n');
           buf = lines.pop();
           for (const line of lines) parseSerial(line.trim());
         }
-      } catch { /* port closed */ }
+      } catch (e) {
+        console.warn('Serial read error:', e);
+      } finally {
+        reader.releaseLock();
+      }
     })();
 
     if (turn === 'player' && !over) initPieceScan();
@@ -622,6 +627,9 @@ function parseSerial(line) {
   const value = parseInt(vm[1]);
   const state = sm[1];
   liveValue = value;
+
+  // Show raw line so user can confirm data is flowing
+  document.getElementById('rawLine').textContent = '↳ ' + line;
 
   // Update bar & readout
   const pct = Math.min(value / 10.23, 100);
@@ -673,16 +681,14 @@ selectSlider.addEventListener('input', () => {
 });
 
 document.getElementById('calPinch').addEventListener('click', () => {
-  if (liveValue < 10) { alert('No signal — connect sensor first and perform a pinch.'); return; }
-  pinchThresh = Math.max(10, Math.round(liveValue * 0.7));
+  pinchThresh = Math.max(10, Math.round(liveValue * 0.75));
   pinchSlider.value = pinchThresh;
   document.getElementById('pinchVal').textContent = pinchThresh;
   updateMarkers();
 });
 
 document.getElementById('calSelect').addEventListener('click', () => {
-  if (liveValue < 10) { alert('No signal — connect sensor first and extend your hand.'); return; }
-  selectThresh = Math.max(pinchThresh + 20, Math.round(liveValue * 0.75));
+  selectThresh = Math.max(pinchThresh + 20, Math.round(liveValue * 0.80));
   selectSlider.value = selectThresh;
   document.getElementById('selectVal').textContent = selectThresh;
   updateMarkers();
