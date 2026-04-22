@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Wrist Anchoring Dashboard — Simulation</title>
+  <style>
+    :root{
+      --bg: #0b0f17;
+      --panel: #121a27;
+      --panel2:#0f1622;
+      --text:#e8eefc;
+      --muted:#9fb0d0;
+      --grid:#21304a;
+      --good:#22c55e;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+      --accent:#8b5cf6;
+      --shadow: 0 18px 40px rgba(0,0,0,.35);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(1000px 600px at 15% 10%, rgba(139,92,246,.18), transparent 60%),
+        radial-gradient(800px 500px at 90% 20%, rgba(34,197,94,.14), transparent 60%),
+        radial-gradient(900px 600px at 60% 90%, rgba(245,158,11,.10), transparent 60%),
+        var(--bg);
+    }
+
+    .wrap{
+      max-width: 1180px;
+      margin: 22px auto;
+      padding: 18px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    header{
+      display:flex;
+      gap:14px;
+      align-items:flex-start;
+      justify-content:space-between;
+      flex-wrap:wrap;
+    }
+
+    .title{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width: 280px;
+    }
+
+    h1{
+      font-size: 20px;
+      margin:0;
+      letter-spacing:.2px;
+    }
+    .sub{
+      margin:0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      max-width: 720px;
+    }
+
+    .controls{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .btn{
+      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.10);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      box-shadow: var(--shadow);
+      font-weight:600;
+      font-size: 13px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      user-select:none;
+    }
+    .btn:active{transform: translateY(1px)}
+    .pill{
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      color: var(--muted);
+      box-shadow: var(--shadow);
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:14px;
+    }
+
+    @media (max-width: 980px){
+      .grid{grid-template-columns: 1fr}
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+
+    .card .hd{
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+    }
+
+    .card .hd h2{
+      font-size: 14px;
+      margin:0;
+      letter-spacing:.25px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .tag{
+      font-size:12px;
+      color: var(--muted);
+      font-family: var(--mono);
+      padding: 5px 8px;
+      border-radius: 10px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+    }
+
+    .bd{padding: 14px 16px 16px}
+
+    /* Status indicator */
+    .statusRow{
+      display:flex;
+      gap:14px;
+      align-items:stretch;
+      flex-wrap:wrap;
+    }
+    .statusBig{
+      flex: 1.1;
+      min-width: 280px;
+      background: rgba(0,0,0,.18);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 16px;
+      padding: 14px 14px 12px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .statusLine{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+    }
+    .statusName{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:800;
+      font-size: 16px;
+      letter-spacing:.2px;
+    }
+    .dot{
+      width:12px;height:12px;border-radius:999px;
+      box-shadow: 0 0 0 4px rgba(255,255,255,.06);
+      flex:none;
+    }
+    .meta{
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      line-height:1.35;
+    }
+
+    .metrics{
+      flex: 1;
+      min-width: 280px;
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    .metric{
+      background: rgba(0,0,0,.18);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 16px;
+      padding: 12px 12px 10px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-height: 88px;
+    }
+    .metric label{
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing:.25px;
+    }
+    .metric .val{
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight:800;
+      letter-spacing:.3px;
+    }
+    .metric .hint{
+      font-size: 12px;
+      color: var(--muted);
+      line-height:1.25;
+    }
+
+    /* Progress bar */
+    .barWrap{
+      margin-top: 10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .barTop{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+    .bar{
+      height: 12px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 999px;
+      overflow:hidden;
+    }
+    .bar > i{
+      display:block;
+      height:100%;
+      width:0%;
+      background: linear-gradient(90deg, rgba(34,197,94,.95), rgba(139,92,246,.95));
+      border-radius: 999px;
+      transition: width .25s ease;
+    }
+
+    /* Timeline strip */
+    .timeline{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .strip{
+      height: 22px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      overflow:hidden;
+      display:flex;
+    }
+    .seg{
+      height:100%;
+      flex: 1 0 auto;
+    }
+
+    .legend{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .chip{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-family: var(--mono);
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      padding: 6px 10px;
+      border-radius: 999px;
+    }
+    .sw{width:10px;height:10px;border-radius:3px}
+
+    /* Charts */
+    canvas{
+      width:100%;
+      height: 220px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      display:block;
+    }
+
+    /* Right panel inputs */
+    .form{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .row{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:10px;
+      align-items:center;
+    }
+    .row label{
+      color: var(--muted);
+      font-size: 12px;
+    }
+    input[type="range"]{
+      width: 100%;
+      accent-color: var(--accent);
+    }
+    .kv{
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 66px;
+      text-align:right;
+    }
+
+    .note{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      background: rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius: 16px;
+      padding: 12px;
+    }
+
+    .sr{
+      position:absolute;
+      width:1px;height:1px;
+      padding:0;margin:-1px;
+      overflow:hidden;clip:rect(0,0,0,0);
+      white-space:nowrap;border:0;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">
+        <h1>Wrist Anchoring Dashboard (Simulation)</h1>
+        <p class="sub">
+          OT-friendly real-time view of <b>anchoring behavior</b> during a 5-minute handwriting session.
+          This demo simulates two sEMG channels (flexor + extensor) plus surface pressure and grip force, and translates them into behavioral states:
+          <b>Anchored</b>, <b>Partial Contact</b>, <b>Lifted</b>.
+        </p>
+      </div>
+      <div class="controls">
+        <button class="btn" id="toggleBtn" aria-pressed="true" title="Start/Stop simulation">
+          <span id="toggleIcon">⏸</span> <span id="toggleText">Pause</span>
+        </button>
+        <button class="btn" id="resetBtn" title="Reset run to 0:00">↺ Reset</button>
+        <span class="pill" id="clockPill">00:00 / 05:00</span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- LEFT: Main dashboard -->
+      <section class="card">
+        <div class="hd">
+          <h2>🧠 OT Summary View <span class="tag">Behavior-first</span></h2>
+          <span class="tag" id="stateTag">STATE: ANCHORED</span>
+        </div>
+        <div class="bd">
+          <div class="statusRow">
+            <div class="statusBig" aria-live="polite">
+              <div class="statusLine">
+                <div class="statusName">
+                  <span class="dot" id="stateDot" aria-hidden="true"></span>
+                  <span id="stateText">Anchored</span>
+                </div>
+                <div class="tag" id="confidenceTag">conf 0.86</div>
+              </div>
+              <div class="meta" id="stateMeta">
+                Stable contact with consistent wrist extensor activity and sustained surface pressure.
+              </div>
+
+              <div class="barWrap">
+                <div class="barTop">
+                  <span>Anchoring Stability</span>
+                  <span id="stabilityPct">78%</span>
+                </div>
+                <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="78" aria-label="Anchoring stability">
+                  <i id="stabilityFill"></i>
+                </div>
+              </div>
+            </div>
+
+            <div class="metrics">
+              <div class="metric">
+                <label for="aciVal">Anchoring Consistency Index (ACI)</label>
+                <div class="val" id="aciVal">72</div>
+                <div class="hint" id="aciHint">Mild instability</div>
+              </div>
+              <div class="metric">
+                <label>Micro-lifts</label>
+                <div class="val" id="liftCount">14</div>
+                <div class="hint">Count of brief lifts detected</div>
+              </div>
+              <div class="metric">
+                <label>Longest sustained anchor</label>
+                <div class="val" id="longestAnchor">00:42</div>
+                <div class="hint">Max continuous anchored span</div>
+              </div>
+              <div class="metric">
+                <label>Fatigue trend</label>
+                <div class="val" id="fatigueText">↑ Moderate</div>
+                <div class="hint" id="fatigueHint">Effort rises after minute 3</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="timeline">
+            <div class="hd" style="padding:0;border:none;margin-bottom:8px;">
+              <h2 style="font-size:14px;margin:0;">🟩 Anchoring Timeline <span class="tag">last 5 min</span></h2>
+              <span class="tag" id="minuteTag">minute 0–1</span>
+            </div>
+
+            <div class="strip" id="strip" aria-label="Anchoring timeline strip"></div>
+
+            <div class="legend" aria-hidden="true">
+              <span class="chip"><span class="sw" style="background:rgba(34,197,94,.95)"></span> anchored</span>
+              <span class="chip"><span class="sw" style="background:rgba(245,158,11,.95)"></span> partial</span>
+              <span class="chip"><span class="sw" style="background:rgba(239,68,68,.95)"></span> lifted</span>
+            </div>
+
+            <div style="height:6px"></div>
+
+            <div class="hd" style="padding:0;border:none;margin-bottom:8px;">
+              <h2 style="font-size:14px;margin:0;">📈 Effort Signals <span class="tag">normalized 0–100</span></h2>
+              <span class="tag" id="samplingTag">update 10 Hz</span>
+            </div>
+
+            <canvas id="chart" width="1000" height="360" aria-label="Effort chart"></canvas>
+            <span class="sr" id="srChart">Chart displays normalized extensor EMG, flexor EMG, grip force, and surface pressure over time.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Controls + definitions -->
+      <aside class="card">
+        <div class="hd">
+          <h2>⚙️ Simulation Controls <span class="tag">tune behavior</span></h2>
+          <span class="tag" id="seedTag">seed 42</span>
+        </div>
+        <div class="bd">
+          <div class="form">
+            <div class="row">
+              <label for="skill">Writer stability (higher = steadier anchoring)</label>
+              <div class="kv" id="skillKV">0.70</div>
+            </div>
+            <input id="skill" type="range" min="0.10" max="0.95" step="0.01" value="0.70"/>
+
+            <div class="row">
+              <label for="fatigue">Fatigue rate (higher = effort rises faster)</label>
+              <div class="kv" id="fatigueKV">0.40</div>
+            </div>
+            <input id="fatigue" type="range" min="0.00" max="0.90" step="0.01" value="0.40"/>
+
+            <div class="row">
+              <label for="noise">Motion artifact / noise</label>
+              <div class="kv" id="noiseKV">0.18</div>
+            </div>
+            <input id="noise" type="range" min="0.00" max="0.60" step="0.01" value="0.18"/>
+
+            <div class="row">
+              <label for="liftiness">Lift tendency (higher = more micro-lifts)</label>
+              <div class="kv" id="liftKV">0.22</div>
+            </div>
+            <input id="liftiness" type="range" min="0.00" max="0.80" step="0.01" value="0.22"/>
+
+            <div class="note">
+              <b>How the dashboard interprets signals</b><br/>
+              <span style="font-family:var(--mono)">
+                Anchored</span> = extensor activity above threshold + sustained surface pressure + low variability.<br/>
+              <span style="font-family:var(--mono)">
+                Partial</span> = extensor active but pressure reduced or variability rising.<br/>
+              <span style="font-family:var(--mono)">
+                Lifted</span> = pressure drops + extensor dips or becomes unstable.<br/><br/>
+              <b>ACI (0–100)</b> combines: % anchored, mean anchor duration, micro-lift count, variability, and fatigue slope.
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------
+    // Dashboard Simulation (10 Hz)
+    // -----------------------------
+    const DURATION_S = 300;          // 5 minutes
+    const HZ = 10;                   // updates per second
+    const DT = 1 / HZ;
+    const STRIP_BINS = 120;          // timeline segments (5 min / 120 = 2.5s each)
+    const BIN_SECONDS = DURATION_S / STRIP_BINS;
+
+    // UI elements
+    const el = {
+      toggleBtn: document.getElementById("toggleBtn"),
+      toggleIcon: document.getElementById("toggleIcon"),
+      toggleText: document.getElementById("toggleText"),
+      resetBtn: document.getElementById("resetBtn"),
+      clockPill: document.getElementById("clockPill"),
+      stateTag: document.getElementById("stateTag"),
+      stateDot: document.getElementById("stateDot"),
+      stateText: document.getElementById("stateText"),
+      stateMeta: document.getElementById("stateMeta"),
+      confidenceTag: document.getElementById("confidenceTag"),
+      stabilityFill: document.getElementById("stabilityFill"),
+      stabilityPct: document.getElementById("stabilityPct"),
+      aciVal: document.getElementById("aciVal"),
+      aciHint: document.getElementById("aciHint"),
+      liftCount: document.getElementById("liftCount"),
+      longestAnchor: document.getElementById("longestAnchor"),
+      fatigueText: document.getElementById("fatigueText"),
+      fatigueHint: document.getElementById("fatigueHint"),
+      strip: document.getElementById("strip"),
+      minuteTag: document.getElementById("minuteTag"),
+      chart: document.getElementById("chart"),
+      samplingTag: document.getElementById("samplingTag"),
+      seedTag: document.getElementById("seedTag"),
+
+      skill: document.getElementById("skill"),
+      fatigue: document.getElementById("fatigue"),
+      noise: document.getElementById("noise"),
+      liftiness: document.getElementById("liftiness"),
+      skillKV: document.getElementById("skillKV"),
+      fatigueKV: document.getElementById("fatigueKV"),
+      noiseKV: document.getElementById("noiseKV"),
+      liftKV: document.getElementById("liftKV"),
+    };
+
+    // Build timeline strip segments
+    const stripSegs = [];
+    for (let i=0;i<STRIP_BINS;i++){
+      const d = document.createElement("div");
+      d.className = "seg";
+      d.style.width = `${100/STRIP_BINS}%`;
+      d.style.background = "rgba(34,197,94,.28)"; // init anchored-ish
+      el.strip.appendChild(d);
+      stripSegs.push(d);
+    }
+
+    // Colors (match CSS vars, but set as explicit strings for canvas)
+    const C = {
+      anchored: "rgba(34,197,94,.95)",
+      partial:  "rgba(245,158,11,.95)",
+      lifted:   "rgba(239,68,68,.95)",
+      bgGrid:   "rgba(33,48,74,.9)",
+      text:     "rgba(232,238,252,.95)",
+      muted:    "rgba(159,176,208,.85)",
+      line1:    "rgba(34,197,94,.95)",    // extensor
+      line2:    "rgba(139,92,246,.95)",   // flexor
+      line3:    "rgba(245,158,11,.95)",   // grip
+      line4:    "rgba(56,189,248,.95)",   // pressure (cyan-ish)
+    };
+
+    // Deterministic PRNG (Mulberry32)
+    function mulberry32(seed){
+      let t = seed >>> 0;
+      return function(){
+        t += 0x6D2B79F5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      }
+    }
+
+    // Simulation state
+    let running = true;
+    let t = 0;
+    let tick = 0;
+    let seed = 42;
+    let rand = mulberry32(seed);
+
+    // Signals (normalized 0..100)
+    const historyLen = 600; // 60s window at 10Hz for the chart
+    const series = {
+      ext: new Array(historyLen).fill(0),
+      flex:new Array(historyLen).fill(0),
+      grip:new Array(historyLen).fill(0),
+      press:new Array(historyLen).fill(0),
+      state:new Array(historyLen).fill(0), // 2 anchored,1 partial,0 lifted (for internal)
+    };
+
+    // Anchor tracking
+    let microLiftCount = 0;
+    let currentAnchorRun = 0;      // seconds anchored continuously
+    let longestAnchorRun = 0;
+
+    // Bin timeline aggregation
+    const bins = new Array(STRIP_BINS).fill("anchored"); // state per bin
+    const binStats = new Array(STRIP_BINS).fill(null).map(()=>({a:0,p:0,l:0, n:0}));
+    let lastBinIndex = 0;
+
+    // For fatigue slope estimate (simple: compare early vs late ext activity)
+    const fatigueWindow = {
+      early: [],
+      late: []
+    };
+
+    // UI: slider values
+    function syncSliders(){
+      el.skillKV.textContent = (+el.skill.value).toFixed(2);
+      el.fatigueKV.textContent = (+el.fatigue.value).toFixed(2);
+      el.noiseKV.textContent = (+el.noise.value).toFixed(2);
+      el.liftKV.textContent = (+el.liftiness.value).toFixed(2);
+    }
+    ["input","change"].forEach(evt=>{
+      el.skill.addEventListener(evt, syncSliders);
+      el.fatigue.addEventListener(evt, syncSliders);
+      el.noise.addEventListener(evt, syncSliders);
+      el.liftiness.addEventListener(evt, syncSliders);
+    });
+    syncSliders();
+
+    // Helpers
+    const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+    const lerp = (a,b,u)=>a+(b-a)*u;
+    function mmss(seconds){
+      seconds = Math.max(0, Math.floor(seconds));
+      const m = Math.floor(seconds/60);
+      const s = seconds%60;
+      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    }
+
+    // Classification thresholds (normalized)
+    function classify(ext, press, variability){
+      // variability is 0..1 (higher = noisier / unstable)
+      const extThr = 35;  // "active stabilization"
+      const pressThr = 40; // "contact on table"
+      const varThr = 0.35;
+
+      if (press < 18) return {state:"lifted", conf:0.85};
+      if (ext >= extThr && press >= pressThr && variability < varThr) return {state:"anchored", conf:0.80 + (0.15*(1-variability))};
+      if (ext >= 25 && press >= 22) return {state:"partial", conf:0.70};
+      return {state:"lifted", conf:0.70};
+    }
+
+    function stateToColor(state){
+      if (state==="anchored") return C.anchored;
+      if (state==="partial") return C.partial;
+      return C.lifted;
+    }
+
+    function updateStateUI(state, conf){
+      const dot = el.stateDot;
+      const tag = el.stateTag;
+
+      dot.style.background = stateToColor(state);
+      tag.textContent = `STATE: ${state.toUpperCase()}`;
+      tag.style.borderColor = "rgba(255,255,255,.12)";
+      tag.style.background = "rgba(0,0,0,.20)";
+      el.confidenceTag.textContent = `conf ${conf.toFixed(2)}`;
+
+      if (state==="anchored"){
+        el.stateText.textContent = "Anchored";
+        el.stateMeta.textContent = "Stable contact with consistent wrist extensor activity and sustained surface pressure.";
+      } else if (state==="partial"){
+        el.stateText.textContent = "Partial Contact";
+        el.stateMeta.textContent = "Contact is intermittent or unstable. Extensor activity is present, but pressure or consistency is reduced.";
+      } else {
+        el.stateText.textContent = "Lifted";
+        el.stateMeta.textContent = "Wrist contact dropped. Surface pressure decreases and stabilization signal dips or becomes unstable.";
+      }
+    }
+
+    // ACI computation (simple, readable, tunable)
+    function computeACI(){
+      // percent anchored over elapsed time (based on bins)
+      const elapsed = Math.max(1, t);
+      const totalBins = Math.max(1, Math.floor(elapsed / BIN_SECONDS));
+      const usableBins = clamp(totalBins, 1, STRIP_BINS);
+
+      let a=0,p=0,l=0;
+      for (let i=0;i<usableBins;i++){
+        const st = bins[i];
+        if (st==="anchored") a++;
+        else if (st==="partial") p++;
+        else l++;
+      }
+
+      const anchoredPct = a / usableBins;               // 0..1
+      const partialPct  = p / usableBins;               // 0..1
+      const liftedPct   = l / usableBins;               // 0..1
+
+      // micro-lift rate (per minute)
+      const liftsPerMin = microLiftCount / (elapsed/60);
+
+      // variability proxy: last 10 seconds std-ish of extensor
+      const window = Math.min(series.ext.length, 10*HZ);
+      let mean = 0;
+      for (let i=historyLen-window;i<historyLen;i++){ mean += series.ext[i]; }
+      mean /= window;
+      let v = 0;
+      for (let i=historyLen-window;i<historyLen;i++){
+        const d = series.ext[i]-mean;
+        v += d*d;
+      }
+      v = Math.sqrt(v/window) / 50; // scale to ~0..1
+      const varPenalty = clamp(v, 0, 1);
+
+      // fatigue proxy: compare late vs early averages (normalized)
+      let fatigue = 0;
+      if (fatigueWindow.early.length >= 20 && fatigueWindow.late.length >= 20){
+        const e = fatigueWindow.early.reduce((s,x)=>s+x,0)/fatigueWindow.early.length;
+        const l2 = fatigueWindow.late.reduce((s,x)=>s+x,0)/fatigueWindow.late.length;
+        fatigue = clamp((l2 - e)/50, 0, 1); // 0..1
+      }
+
+      // Compose: encourage anchored, tolerate some partial, penalize lifted + lifts + variability + fatigue
+      let score =
+        100 * anchoredPct +
+        25  * partialPct -
+        80  * liftedPct -
+        10  * clamp(liftsPerMin/12, 0, 1) -   // 12/min is quite frequent
+        18  * varPenalty -
+        14  * fatigue;
+
+      score = Math.round(clamp(score, 0, 100));
+
+      const stabilityPct = Math.round(100*(anchoredPct + 0.5*partialPct));
+
+      // Qualitative hint
+      let hint = "Stable anchoring";
+      if (score < 80) hint = "Mild instability";
+      if (score < 60) hint = "Intermittent anchoring";
+      if (score < 40) hint = "Poor anchoring control";
+
+      // Fatigue label
+      let fatLabel = "↔ Stable";
+      let fatHint = "Effort remains steady";
+      if (fatigue > 0.15){ fatLabel = "↑ Mild"; fatHint = "Effort increases gradually"; }
+      if (fatigue > 0.35){ fatLabel = "↑ Moderate"; fatHint = "Effort rises after mid-session"; }
+      if (fatigue > 0.60){ fatLabel = "↑ High"; fatHint = "Strong compensatory effort increase"; }
+
+      return { score, hint, stabilityPct, fatLabel, fatHint };
+    }
+
+    // Chart drawing
+    const ctx = el.chart.getContext("2d");
+
+    function drawChart(){
+      const w = el.chart.width;
+      const h = el.chart.height;
+      ctx.clearRect(0,0,w,h);
+
+      // padding
+      const padL = 46, padR = 14, padT = 14, padB = 30;
+      const cw = w - padL - padR;
+      const ch = h - padT - padB;
+
+      // grid
+      ctx.strokeStyle = "rgba(33,48,74,.65)";
+      ctx.lineWidth = 1;
+
+      const yTicks = 5;
+      for (let i=0;i<=yTicks;i++){
+        const y = padT + (ch * i / yTicks);
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(padL+cw, y);
+        ctx.stroke();
+      }
+
+      const xTicks = 6;
+      for (let i=0;i<=xTicks;i++){
+        const x = padL + (cw * i / xTicks);
+        ctx.beginPath();
+        ctx.moveTo(x, padT);
+        ctx.lineTo(x, padT+ch);
+        ctx.stroke();
+      }
+
+      // axes labels
+      ctx.fillStyle = "rgba(159,176,208,.85)";
+      ctx.font = "12px ui-monospace, Menlo, Monaco, Consolas, monospace";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let i=0;i<=yTicks;i++){
+        const val = 100 - (100 * i / yTicks);
+        const y = padT + (ch * i / yTicks);
+        ctx.fillText(String(Math.round(val)), padL-8, y);
+      }
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText("0–100 (normalized)", padL, padT-2);
+
+      // helper to plot a line
+      function plotLine(arr, color){
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i=0;i<arr.length;i++){
+          const x = padL + cw * (i/(arr.length-1));
+          const y = padT + ch * (1 - arr[i]/100);
+          if (i===0) ctx.moveTo(x,y);
+          else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+      }
+
+      plotLine(series.ext, C.line1);
+      plotLine(series.flex, C.line2);
+      plotLine(series.grip, C.line3);
+      plotLine(series.press, C.line4);
+
+      // legend
+      const lx = padL, ly = padT + ch + 10;
+      const items = [
+        {name:"Extensor EMG", color:C.line1},
+        {name:"Flexor EMG", color:C.line2},
+        {name:"Grip", color:C.line3},
+        {name:"Surface", color:C.line4}
+      ];
+      ctx.font = "12px ui-monospace, Menlo, Monaco, Consolas, monospace";
+      ctx.textBaseline = "middle";
+      let x = lx;
+      for (const it of items){
+        ctx.fillStyle = it.color;
+        ctx.fillRect(x, ly-6, 10, 10);
+        ctx.fillStyle = "rgba(232,238,252,.9)";
+        ctx.fillText(it.name, x+14, ly);
+        x += 140;
+      }
+    }
+
+    // Timeline strip paint
+    function repaintStrip(){
+      for (let i=0;i<STRIP_BINS;i++){
+        const st = bins[i];
+        stripSegs[i].style.background =
+          st==="anchored" ? "rgba(34,197,94,.42)" :
+          st==="partial"  ? "rgba(245,158,11,.42)" :
+                            "rgba(239,68,68,.42)";
+      }
+    }
+
+    // Simulation step
+    function step(){
+      // stop at 5 minutes (but keep last view)
+      if (t >= DURATION_S){
+        running = false;
+        el.toggleIcon.textContent = "▶";
+        el.toggleText.textContent = "Resume";
+        el.toggleBtn.setAttribute("aria-pressed","false");
+        return;
+      }
+
+      const skill = +el.skill.value;          // 0.1..0.95
+      const fatigueRate = +el.fatigue.value;  // 0..0.9
+      const noise = +el.noise.value;          // 0..0.6
+      const liftiness = +el.liftiness.value;  // 0..0.8
+
+      // time factors
+      const fatigueFactor = clamp((t / DURATION_S) * fatigueRate, 0, 0.95);
+      const baseStability = clamp(skill - 0.15*fatigueFactor, 0.05, 0.95);
+
+      // "write strokes" oscillation to create natural-ish signal
+      const stroke = 0.5 + 0.5*Math.sin(2*Math.PI*(0.85 + 0.25*rand())*t);
+      const micro = 0.5 + 0.5*Math.sin(2*Math.PI*(3.2 + 0.8*rand())*t + 6*rand());
+
+      // event: micro-lift probability per tick
+      const liftProb = clamp((1-baseStability)*0.012 + liftiness*0.015 + fatigueFactor*0.008, 0, 0.08);
+      const isLiftEvent = rand() < liftProb;
+
+      // generate signals
+      // extensor: stabilization baseline + some stroke modulation + fatigue increase + noise
+      let ext = 38 + 18*stroke + 10*micro + 28*fatigueFactor;
+      // flexor: grip effort closely tied to stroke + fatigue
+      let flex = 30 + 24*stroke + 8*micro + 18*fatigueFactor;
+
+      // grip and surface pressure
+      let grip = 34 + 28*stroke + 8*micro + 18*fatigueFactor;
+      let press = 55 + 16*stroke + 6*micro - 10*fatigueFactor;
+
+      // introduce lift event: pressure drops sharply, extensor destabilizes
+      if (isLiftEvent){
+        press -= 45 + 15*rand();
+        ext  -= 20 + 10*rand();
+      }
+
+      // noise/artifact: add jitter
+      const jitter = () => (rand()*2-1) * (noise*22);
+      ext  += jitter();
+      flex += jitter();
+      grip += jitter();
+      press+= jitter();
+
+      // clamp
+      ext = clamp(ext, 0, 100);
+      flex = clamp(flex,0, 100);
+      grip = clamp(grip,0, 100);
+      press= clamp(press,0, 100);
+
+      // variability proxy: higher with noise + liftiness + fatigue
+      const variability = clamp(0.10 + noise*0.65 + (1-baseStability)*0.25 + (isLiftEvent?0.25:0), 0, 1);
+
+      // behavioral classification
+      const {state, conf} = classify(ext, press, variability);
+
+      // micro-lift count: count transitions into lifted (debounced)
+      // We'll count if state is lifted and last stable state wasn't lifted.
+      const prevState = series.state[historyLen-1];
+      const stateCode = state==="anchored" ? 2 : state==="partial" ? 1 : 0;
+      if (stateCode === 0 && prevState !== 0){
+        microLiftCount++;
+      }
+
+      // anchor run tracking (anchored only)
+      if (state==="anchored"){
+        currentAnchorRun += DT;
+        longestAnchorRun = Math.max(longestAnchorRun, currentAnchorRun);
+      } else {
+        currentAnchorRun = 0;
+      }
+
+      // record into history arrays (shift left, push new)
+      function push(arr, v){ arr.shift(); arr.push(v); }
+      push(series.ext, ext);
+      push(series.flex, flex);
+      push(series.grip, grip);
+      push(series.press, press);
+      push(series.state, stateCode);
+
+      // timeline bins update
+      const binIndex = clamp(Math.floor(t / BIN_SECONDS), 0, STRIP_BINS-1);
+      if (binIndex !== lastBinIndex){
+        // finalize previous bin to a state based on stats
+        const bs = binStats[lastBinIndex];
+        if (bs.n > 0){
+          const a = bs.a/bs.n, p = bs.p/bs.n, l = bs.l/bs.n;
+          bins[lastBinIndex] = (a >= p && a >= l) ? "anchored" : (l >= a && l >= p) ? "lifted" : "partial";
+        }
+        lastBinIndex = binIndex;
+      }
+      // accumulate current bin
+      const bs = binStats[binIndex];
+      bs.n++;
+      if (state==="anchored") bs.a++;
+      else if (state==="partial") bs.p++;
+      else bs.l++;
+
+      // fatigue windows: sample extensor early (first minute) and late (last minute)
+      if (t < 60) fatigueWindow.early.push(ext);
+      if (t > 240) fatigueWindow.late.push(ext);
+
+      // update UI (behavior)
+      updateStateUI(state, conf);
+
+      // compute ACI and stability
+      const aci = computeACI();
+      el.aciVal.textContent = String(aci.score);
+      el.aciHint.textContent = aci.hint;
+
+      el.stabilityPct.textContent = `${aci.stabilityPct}%`;
+      el.stabilityFill.style.width = `${aci.stabilityPct}%`;
+
+      // update progressbar aria
+      const bar = el.stabilityFill.parentElement;
+      bar.setAttribute("aria-valuenow", String(aci.stabilityPct));
+
+      el.liftCount.textContent = String(microLiftCount);
+      el.longestAnchor.textContent = mmss(longestAnchorRun);
+
+      el.fatigueText.textContent = aci.fatLabel;
+      el.fatigueHint.textContent = aci.fatHint;
+
+      // timeline repaint occasionally
+      if (tick % 3 === 0) repaintStrip();
+
+      // minute label
+      const minute = Math.floor(t/60);
+      el.minuteTag.textContent = `minute ${minute}–${minute+1}`;
+
+      // clock
+      el.clockPill.textContent = `${mmss(t)} / 05:00`;
+
+      // chart redraw
+      if (tick % 2 === 0) drawChart();
+
+      // next tick
+      t += DT;
+      tick++;
+    }
+
+    // Loop
+    let timer = null;
+    function start(){
+      if (timer) return;
+      timer = setInterval(()=>{ if (running) step(); }, 1000/HZ);
+    }
+    function stop(){
+      if (!timer) return;
+      clearInterval(timer);
+      timer = null;
+    }
+
+    // Buttons
+    el.toggleBtn.addEventListener("click", ()=>{
+      running = !running;
+      el.toggleBtn.setAttribute("aria-pressed", running ? "true" : "false");
+      el.toggleIcon.textContent = running ? "⏸" : "▶";
+      el.toggleText.textContent = running ? "Pause" : "Resume";
+    });
+
+    el.resetBtn.addEventListener("click", ()=>{
+      // Reset everything
+      t = 0; tick = 0;
+      microLiftCount = 0;
+      currentAnchorRun = 0;
+      longestAnchorRun = 0;
+      lastBinIndex = 0;
+
+      fatigueWindow.early = [];
+      fatigueWindow.late = [];
+
+      series.ext.fill(0); series.flex.fill(0); series.grip.fill(0); series.press.fill(0); series.state.fill(2);
+
+      for (let i=0;i<STRIP_BINS;i++){
+        bins[i] = "anchored";
+        binStats[i].a = 0; binStats[i].p = 0; binStats[i].l = 0; binStats[i].n = 0;
+      }
+      repaintStrip();
+      drawChart();
+
+      // force UI refresh on next step
+      running = true;
+      el.toggleBtn.setAttribute("aria-pressed","true");
+      el.toggleIcon.textContent = "⏸";
+      el.toggleText.textContent = "Pause";
+      el.clockPill.textContent = "00:00 / 05:00";
+    });
+
+    // Seed UI (click pill to reseed)
+    el.seedTag.style.cursor = "pointer";
+    el.seedTag.title = "Click to reseed randomness";
+    el.seedTag.addEventListener("click", ()=>{
+      seed = Math.floor(Math.random()*100000) + 1;
+      rand = mulberry32(seed);
+      el.seedTag.textContent = `seed ${seed}`;
+    });
+
+    // Init visuals
+    repaintStrip();
+    drawChart();
+    updateStateUI("anchored", 0.86);
+    const aci0 = computeACI();
+    el.stabilityFill.style.width = `${aci0.stabilityPct}%`;
+    el.stabilityPct.textContent = `${aci0.stabilityPct}%`;
+
+    // Run
+    start();
+  </script>
+</body>
+</html>

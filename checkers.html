@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkers</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: rgba(255,255,255,.08);
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --shadow: 0 8px 32px rgba(0,0,0,.5);
+  --radius: 16px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 32px;
+  gap: 14px;
+}
+h1 { font-size: 22px; font-weight: 700; letter-spacing: .4px; }
+.scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 28px;
+  width: 100%;
+  max-width: 512px;
+  box-shadow: var(--shadow);
+}
+.side { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.side-label {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1px; color: var(--muted); text-transform: uppercase;
+}
+.side-score {
+  font-size: 34px; font-weight: 800;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.red-score  { color: #f85149; }
+.dark-score { color: #8b949e; }
+.side-sub   { font-size: 11px; color: var(--muted); }
+.status-text {
+  font-size: 13px; color: var(--muted);
+  font-style: italic; text-align: center; min-width: 110px;
+}
+
+/* ── Sensor bar ── */
+.sensor-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  width: 100%;
+  max-width: 512px;
+  box-shadow: var(--shadow);
+  flex-wrap: wrap;
+}
+.sensor-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #3f3f46;
+  flex: none;
+  transition: background .3s;
+}
+.sensor-dot.connected   { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+.sensor-dot.flexing     { background: #f85149; box-shadow: 0 0 8px #f8514999; }
+.sensor-label {
+  font-size: 12px; color: var(--muted); flex: none;
+}
+.signal-wrap {
+  flex: 1; min-width: 80px;
+  height: 6px;
+  background: rgba(255,255,255,.06);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.08);
+}
+.signal-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #22c55e, #f59e0b);
+  border-radius: 999px;
+  transition: width .08s linear;
+}
+.sensor-state {
+  font-family: ui-monospace, monospace;
+  font-size: 12px; color: var(--muted);
+  min-width: 56px;
+}
+.sensor-hint {
+  font-size: 11px; color: var(--muted);
+  font-style: italic; white-space: nowrap;
+}
+
+#canvas {
+  border-radius: 10px;
+  box-shadow: var(--shadow), 0 0 0 1px rgba(255,255,255,.06);
+  cursor: pointer;
+  display: block;
+  width: min(512px, calc(100vw - 32px));
+  height: min(512px, calc(100vw - 32px));
+}
+.btn-row { display: flex; gap: 10px; }
+.btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 22px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+.btn:hover  { background: #21262d; }
+.btn:active { transform: translateY(1px); }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+.hint {
+  font-size: 12px; color: var(--muted);
+  text-align: center; max-width: 420px; line-height: 1.6;
+}
+</style>
+</head>
+<body>
+
+<h1>Checkers</h1>
+
+<div class="scoreboard">
+  <div class="side">
+    <span class="side-label">You</span>
+    <span class="side-score red-score" id="pCaps">0</span>
+    <span class="side-sub">captured</span>
+  </div>
+  <span class="status-text" id="status">Your turn</span>
+  <div class="side">
+    <span class="side-label">CPU</span>
+    <span class="side-score dark-score" id="cCaps">0</span>
+    <span class="side-sub">captured</span>
+  </div>
+</div>
+
+<!-- Sensor bar -->
+<div class="sensor-bar">
+  <div class="sensor-dot" id="sensorDot"></div>
+  <span class="sensor-label" id="sensorLabel">Sensor disconnected</span>
+  <div class="signal-wrap">
+    <div class="signal-fill" id="signalFill"></div>
+  </div>
+  <span class="sensor-state" id="sensorState">State: --</span>
+  <span class="sensor-hint" id="scanHint"></span>
+  <button class="btn btn-sm" id="connectBtn">Connect</button>
+</div>
+
+<canvas id="canvas" width="512" height="512"></canvas>
+
+<div class="btn-row">
+  <button class="btn" id="newBtn">New Game</button>
+</div>
+
+<p class="hint">
+  <strong>Sensor:</strong> flex to confirm the highlighted piece or move — it auto-cycles.<br>
+  <strong>Mouse:</strong> click a <strong style="color:#f85149">red piece</strong>, then click a square to move. Jumps mandatory. King = ♛.
+</p>
+
+<script>
+'use strict';
+
+const CELL = 64;
+const N    = 8;
+const cv   = document.getElementById('canvas');
+const ctx  = cv.getContext('2d');
+cv.width = cv.height = N * CELL;
+
+// Pieces
+const EMPTY = 0, P = 1, PK = 2, C = -1, CK = -2;
+
+// Game state
+let board, sel, hilights, pCaps, cCaps, turn, mjPiece, over;
+
+// Serial / sensor state
+let serialConnected = false;
+let prevSensorState = 'A';
+let flexing         = false;
+let lastFlexTime    = 0;
+const FLEX_COOLDOWN = 850; // ms
+
+// Scanning (auto-cursor for sensor control)
+const SCAN_MS = 1300;
+let scanPhase   = null;   // 'pieces' | 'moves' | null
+let scanItems   = [];
+let scanIndex   = 0;
+let scanTimer   = null;
+let activeScan  = null;   // current item under cursor
+
+/* ═══════════════════════════════════════════════════
+   GAME INIT
+═══════════════════════════════════════════════════ */
+function newGame() {
+  board = Array.from({length: N}, () => new Array(N).fill(EMPTY));
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < N; c++)
+      if ((r + c) % 2 === 1) board[r][c] = C;
+  for (let r = 5; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if ((r + c) % 2 === 1) board[r][c] = P;
+  sel = null; hilights = []; pCaps = 0; cCaps = 0;
+  turn = 'player'; mjPiece = null; over = false;
+  clearScan();
+  setStatus('Your turn');
+  updateScore();
+  maybeStartScan();
+  render();
+}
+
+/* ═══════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════ */
+const isP    = p => p === P  || p === PK;
+const isC    = p => p === C  || p === CK;
+const isKing = p => p === PK || p === CK;
+const oob    = (r, c) => r < 0 || r >= N || c < 0 || c >= N;
+const isOpp  = (a, b) => (isP(a) && isC(b)) || (isC(a) && isP(b));
+
+function dirs(piece) {
+  if (isKing(piece)) return [[-1,-1],[-1,1],[1,-1],[1,1]];
+  return isP(piece) ? [[-1,-1],[-1,1]] : [[1,-1],[1,1]];
+}
+
+/* ═══════════════════════════════════════════════════
+   MOVE GENERATION
+═══════════════════════════════════════════════════ */
+function rawMoves(r, c, b) {
+  const p = b[r][c];
+  const moves = [], jumps = [];
+  for (const [dr, dc] of dirs(p)) {
+    const nr = r+dr, nc = c+dc;
+    if (oob(nr, nc)) continue;
+    if (b[nr][nc] === EMPTY) {
+      moves.push({r: nr, c: nc, cap: null});
+    } else if (isOpp(p, b[nr][nc])) {
+      const jr = r+2*dr, jc = c+2*dc;
+      if (!oob(jr, jc) && b[jr][jc] === EMPTY)
+        jumps.push({r: jr, c: jc, cap: {r: nr, c: nc}});
+    }
+  }
+  return {moves, jumps};
+}
+
+function sideHasJump(forPlayer, b) {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (forPlayer  && !isP(b[r][c])) continue;
+      if (!forPlayer && !isC(b[r][c])) continue;
+      if (rawMoves(r, c, b).jumps.length > 0) return true;
+    }
+  return false;
+}
+
+function validFor(r, c, b) {
+  const {moves, jumps} = rawMoves(r, c, b);
+  if (sideHasJump(isP(b[r][c]), b)) return jumps;
+  return moves;
+}
+
+/* ═══════════════════════════════════════════════════
+   APPLY MOVE
+═══════════════════════════════════════════════════ */
+function applyMove(b, fr, fc, tr, tc, cap) {
+  const nb = b.map(row => [...row]);
+  const piece = nb[fr][fc];
+  nb[tr][tc] = piece;
+  nb[fr][fc] = EMPTY;
+  if (cap) nb[cap.r][cap.c] = EMPTY;
+  if (piece === P  && tr === 0)   nb[tr][tc] = PK;
+  if (piece === C  && tr === N-1) nb[tr][tc] = CK;
+  return nb;
+}
+
+/* ═══════════════════════════════════════════════════
+   WIN DETECTION
+═══════════════════════════════════════════════════ */
+function anyMove(forPlayer, b) {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (forPlayer  && !isP(b[r][c])) continue;
+      if (!forPlayer && !isC(b[r][c])) continue;
+      const {moves, jumps} = rawMoves(r, c, b);
+      if (moves.length || jumps.length) return true;
+    }
+  return false;
+}
+
+function pieceCount(b) {
+  let p = 0, c = 0;
+  for (let r = 0; r < N; r++)
+    for (let cc = 0; cc < N; cc++) {
+      if (isP(b[r][cc])) p++;
+      if (isC(b[r][cc])) c++;
+    }
+  return {p, c};
+}
+
+function checkWin(b) {
+  const {p, c} = pieceCount(b);
+  if (c === 0 || !anyMove(false, b)) return 'player';
+  if (p === 0 || !anyMove(true,  b)) return 'cpu';
+  return null;
+}
+
+/* ═══════════════════════════════════════════════════
+   SCANNING (sensor auto-cursor)
+═══════════════════════════════════════════════════ */
+function clearScan() {
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  scanPhase = null; scanItems = []; scanIndex = 0; activeScan = null;
+}
+
+function maybeStartScan() {
+  if (!serialConnected || turn !== 'player' || over) return;
+  clearScan();
+  startPieceScan();
+}
+
+function startPieceScan() {
+  const pieces = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (isP(board[r][c]) && validFor(r, c, board).length > 0)
+        pieces.push({r, c});
+  if (!pieces.length) return;
+
+  scanPhase = 'pieces';
+  scanItems = pieces;
+  scanIndex = 0;
+  syncPieceScanUI();
+  scanTimer = setInterval(() => {
+    scanIndex = (scanIndex + 1) % scanItems.length;
+    syncPieceScanUI();
+  }, SCAN_MS);
+  setScanHint('Flex to select piece');
+}
+
+function syncPieceScanUI() {
+  activeScan = scanItems[scanIndex];
+  sel = activeScan;
+  hilights = validFor(activeScan.r, activeScan.c, board);
+  render();
+}
+
+function startMoveScan(pr, pc) {
+  clearScan();
+  const moves = validFor(pr, pc, board);
+  if (!moves.length) return;
+  sel = {r: pr, c: pc};
+  hilights = moves;
+  scanPhase = 'moves';
+  scanItems = moves;
+  scanIndex = 0;
+  activeScan = moves[0];
+  render();
+  scanTimer = setInterval(() => {
+    scanIndex = (scanIndex + 1) % scanItems.length;
+    activeScan = scanItems[scanIndex];
+    render();
+  }, SCAN_MS);
+  setScanHint('Flex to move here');
+}
+
+function startMultiJumpScan(pr, pc, jumps) {
+  clearScan();
+  sel = {r: pr, c: pc};
+  hilights = jumps;
+  scanPhase = 'moves';
+  scanItems = jumps;
+  scanIndex = 0;
+  activeScan = jumps[0];
+  render();
+  scanTimer = setInterval(() => {
+    scanIndex = (scanIndex + 1) % scanItems.length;
+    activeScan = scanItems[scanIndex];
+    render();
+  }, SCAN_MS);
+  setScanHint('Flex to continue jump');
+}
+
+/* ═══════════════════════════════════════════════════
+   PLAYER INPUT — MOUSE
+═══════════════════════════════════════════════════ */
+cv.addEventListener('click', e => {
+  if (over || turn !== 'player') return;
+  const rect = cv.getBoundingClientRect();
+  const sx = cv.width  / rect.width;
+  const sy = cv.height / rect.height;
+  const col = Math.floor((e.clientX - rect.left) * sx / CELL);
+  const row = Math.floor((e.clientY - rect.top)  * sy / CELL);
+  if (oob(row, col)) return;
+
+  if (mjPiece) {
+    const mv = hilights.find(h => h.r === row && h.c === col);
+    if (mv) { clearScan(); doPlayerStep(mjPiece.r, mjPiece.c, mv); }
+    return;
+  }
+
+  if (sel) {
+    const mv = hilights.find(h => h.r === row && h.c === col);
+    if (mv) { clearScan(); doPlayerStep(sel.r, sel.c, mv); return; }
+  }
+
+  if (isP(board[row][col])) {
+    const moves = validFor(row, col, board);
+    if (moves.length) {
+      clearScan();
+      sel = {r: row, c: col};
+      hilights = moves;
+      // If sensor connected, start move scan for this piece
+      if (serialConnected) startMoveScan(row, col);
+      else render();
+    } else {
+      sel = null; hilights = [];
+      render();
+    }
+  } else {
+    sel = null; hilights = [];
+    if (serialConnected) maybeStartScan();
+    else render();
+  }
+});
+
+/* ═══════════════════════════════════════════════════
+   PLAYER INPUT — SENSOR FLEX
+═══════════════════════════════════════════════════ */
+function onFlex() {
+  if (over || turn !== 'player' || !scanPhase) return;
+  const now = Date.now();
+  if (now - lastFlexTime < FLEX_COOLDOWN) return;
+  lastFlexTime = now;
+
+  if (scanPhase === 'pieces') {
+    const piece = scanItems[scanIndex];
+    startMoveScan(piece.r, piece.c);
+  } else if (scanPhase === 'moves') {
+    const mv = scanItems[scanIndex];
+    clearScan();
+    if (mjPiece) {
+      doPlayerStep(mjPiece.r, mjPiece.c, mv);
+    } else {
+      doPlayerStep(sel.r, sel.c, mv);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   PLAYER STEP (shared by mouse + sensor)
+═══════════════════════════════════════════════════ */
+function doPlayerStep(fr, fc, mv) {
+  const prevPiece = board[fr][fc];
+  const wasJump   = !!mv.cap;
+  board = applyMove(board, fr, fc, mv.r, mv.c, mv.cap);
+  if (wasJump) { pCaps++; updateScore(); }
+
+  const becameKing = prevPiece === P && board[mv.r][mv.c] === PK;
+
+  if (wasJump && !becameKing) {
+    const nextJ = rawMoves(mv.r, mv.c, board).jumps;
+    if (nextJ.length) {
+      sel = {r: mv.r, c: mv.c};
+      hilights = nextJ;
+      mjPiece = {r: mv.r, c: mv.c};
+      if (serialConnected) startMultiJumpScan(mv.r, mv.c, nextJ);
+      else render();
+      return;
+    }
+  }
+
+  sel = null; hilights = []; mjPiece = null;
+  clearScan();
+  const w = checkWin(board);
+  if (w) { render(); endGame(w); return; }
+
+  turn = 'cpu';
+  setStatus('CPU thinking…');
+  render();
+  setTimeout(doCpu, 520);
+}
+
+/* ═══════════════════════════════════════════════════
+   CPU AI
+═══════════════════════════════════════════════════ */
+function cpuCandidates(b, forced) {
+  const simple = [], jumps = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (!isC(b[r][c])) continue;
+      if (forced && (r !== forced.r || c !== forced.c)) continue;
+      const {moves, jumps: jj} = rawMoves(r, c, b);
+      for (const m of jj)   jumps.push({fr:r, fc:c, tr:m.r, tc:m.c, cap:m.cap});
+      for (const m of moves) simple.push({fr:r, fc:c, tr:m.r, tc:m.c, cap:null});
+    }
+  return jumps.length ? jumps : simple;
+}
+
+function scoreMove(mv, b) {
+  let s = 0;
+  if (mv.cap) s += 10;
+  if (b[mv.fr][mv.fc] === C && mv.tr === N-1) s += 6;
+  s += mv.tr * 0.3;
+  if (mv.tc === 0 || mv.tc === N-1) s += 0.4;
+  s += Math.random() * 0.5;
+  return s;
+}
+
+function doCpu(forced) {
+  if (over) return;
+  const moves = cpuCandidates(board, forced);
+  if (!moves.length) { endGame('player'); return; }
+
+  let best = null, bestS = -Infinity;
+  for (const mv of moves) {
+    const s = scoreMove(mv, board);
+    if (s > bestS) { bestS = s; best = mv; }
+  }
+
+  const prevPiece = board[best.fr][best.fc];
+  const wasJump   = !!best.cap;
+  board = applyMove(board, best.fr, best.fc, best.tr, best.tc, best.cap);
+  if (wasJump) { cCaps++; updateScore(); }
+
+  const w = checkWin(board);
+  if (w) { render(); endGame(w); return; }
+
+  const becameKing = prevPiece === C && board[best.tr][best.tc] === CK;
+  if (wasJump && !becameKing) {
+    const nextJ = rawMoves(best.tr, best.tc, board).jumps;
+    if (nextJ.length) {
+      render();
+      setTimeout(() => doCpu({r: best.tr, c: best.tc}), 380);
+      return;
+    }
+  }
+
+  turn = 'player';
+  setStatus('Your turn');
+  render();
+  if (!anyMove(true, board)) { endGame('cpu'); return; }
+  maybeStartScan();
+}
+
+/* ═══════════════════════════════════════════════════
+   WEB SERIAL API
+═══════════════════════════════════════════════════ */
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  if (!('serial' in navigator)) {
+    alert('Web Serial is only supported in Chrome or Edge.\nOpen this page in Chrome to use the sensor.');
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 9600 });
+
+    serialConnected = true;
+    document.getElementById('sensorDot').classList.add('connected');
+    document.getElementById('sensorLabel').textContent = 'Sensor connected';
+    document.getElementById('connectBtn').textContent  = 'Connected';
+    document.getElementById('connectBtn').disabled     = true;
+
+    // Stream reader
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable);
+    const reader = decoder.readable.getReader();
+    let buf = '';
+
+    (async () => {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += value;
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) parseSerial(line.trim());
+        }
+      } catch { /* port closed */ }
+    })();
+
+    if (turn === 'player' && !over) maybeStartScan();
+
+  } catch (err) {
+    if (err.name !== 'NotFoundError') {
+      console.error('Serial error:', err);
+      alert('Could not open port: ' + err.message);
+    }
+  }
+});
+
+function parseSerial(line) {
+  // Format: "Value: 16  |  State: A"
+  const vm = line.match(/Value:\s*(\d+)/);
+  const sm = line.match(/State:\s*(\w+)/);
+  if (!vm || !sm) return;
+
+  const value = parseInt(vm[1]);
+  const state = sm[1];
+
+  // Update sensor UI
+  document.getElementById('signalFill').style.width  = Math.min(value / 10.23, 100) + '%';
+  document.getElementById('sensorState').textContent = 'State: ' + state;
+
+  // Flex detection: rising edge (A → not-A)
+  const dot = document.getElementById('sensorDot');
+  if (!flexing && state !== 'A') {
+    flexing = true;
+    dot.classList.add('flexing');
+    onFlex();
+  } else if (flexing && state === 'A') {
+    flexing = false;
+    dot.classList.remove('flexing');
+  }
+
+  prevSensorState = state;
+}
+
+/* ═══════════════════════════════════════════════════
+   UI HELPERS
+═══════════════════════════════════════════════════ */
+function endGame(winner) {
+  over = true;
+  clearScan();
+  setStatus(winner === 'player' ? '🎉 You win!' : '🤖 CPU wins!');
+  setScanHint('');
+  render();
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+function setScanHint(msg) {
+  document.getElementById('scanHint').textContent = msg;
+}
+
+function updateScore() {
+  document.getElementById('pCaps').textContent = pCaps;
+  document.getElementById('cCaps').textContent = cCaps;
+}
+
+/* ═══════════════════════════════════════════════════
+   RENDERING
+═══════════════════════════════════════════════════ */
+function render() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  // Board squares
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#f0d9b5' : '#b58863';
+      ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+    }
+
+  // Move highlights
+  for (const h of hilights) {
+    const isActive = activeScan && scanPhase === 'moves' &&
+                     h.r === activeScan.r && h.c === activeScan.c;
+    ctx.fillStyle = isActive ? 'rgba(0,240,180,.45)' : 'rgba(255,220,0,.38)';
+    ctx.fillRect(h.c * CELL, h.r * CELL, CELL, CELL);
+    ctx.beginPath();
+    ctx.arc(h.c*CELL + CELL/2, h.r*CELL + CELL/2, isActive ? 14 : 10, 0, Math.PI*2);
+    ctx.fillStyle = isActive ? 'rgba(0,240,180,.9)' : 'rgba(255,200,0,.8)';
+    ctx.fill();
+  }
+
+  // Selected square ring
+  if (sel) {
+    ctx.strokeStyle = 'rgba(255,255,80,.7)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(sel.c*CELL + 2, sel.r*CELL + 2, CELL-4, CELL-4);
+  }
+
+  // Pieces
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (board[r][c] !== EMPTY) drawPiece(r, c, board[r][c]);
+
+  // Scan cursor ring on active piece (piece-phase)
+  if (activeScan && scanPhase === 'pieces') {
+    const x = activeScan.c * CELL + CELL/2;
+    const y = activeScan.r * CELL + CELL/2;
+    ctx.beginPath();
+    ctx.arc(x, y, CELL/2 - 2, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(0,240,180,.9)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  // Game-over dim
+  if (over) {
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+  }
+}
+
+function drawPiece(r, c, piece) {
+  const x   = c*CELL + CELL/2;
+  const y   = r*CELL + CELL/2;
+  const rad = CELL/2 - 6;
+
+  ctx.beginPath();
+  ctx.arc(x + 1.5, y + 3, rad, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(0,0,0,.38)';
+  ctx.fill();
+
+  const red = isP(piece);
+  const g   = ctx.createRadialGradient(x - rad*.28, y - rad*.3, rad*.06, x, y, rad);
+  if (red) { g.addColorStop(0, '#ff6b6b'); g.addColorStop(1, '#b71c1c'); }
+  else     { g.addColorStop(0, '#546e7a'); g.addColorStop(1, '#102027'); }
+
+  ctx.beginPath();
+  ctx.arc(x, y, rad, 0, Math.PI*2);
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y, rad, 0, Math.PI*2);
+  ctx.strokeStyle = red ? '#7f0000' : '#000a12';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y, rad - 5, 0, Math.PI*2);
+  ctx.strokeStyle = red ? 'rgba(255,160,160,.22)' : 'rgba(255,255,255,.07)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  if (isKing(piece)) {
+    ctx.font = `bold ${Math.round(CELL * .36)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,.8)';
+    ctx.shadowBlur  = 4;
+    ctx.fillStyle   = '#ffd700';
+    ctx.fillText('♛', x, y + 1);
+    ctx.shadowBlur  = 0;
+  }
+}
+
+document.getElementById('newBtn').addEventListener('click', newGame);
+newGame();
+</script>
+</body>
+</html>
