@@ -45,6 +45,28 @@
       background: #4caf50;
       box-shadow: 0 0 7px #4caf5088;
     }
+    #connect-btn {
+      margin-top: 22px;
+      padding: 9px 24px;
+      background: #222;
+      color: #aaa;
+      border: 1px solid #333;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    #connect-btn:hover { background: #2a2a2a; border-color: #555; color: #ddd; }
+    #connect-btn:disabled { opacity: 0.4; cursor: default; }
+    #no-serial {
+      display: none;
+      margin-top: 18px;
+      color: #a44;
+      font-size: 13px;
+      text-align: center;
+      line-height: 1.6;
+    }
   </style>
 </head>
 <body>
@@ -52,40 +74,29 @@
   <div id="raw-value">—</div>
   <div id="status">
     <span id="dot"></span>
-    <span id="status-text">Connecting…</span>
+    <span id="status-text">Not connected</span>
   </div>
+  <button id="connect-btn">Connect to Arduino</button>
+  <div id="no-serial">Web Serial not supported.<br>Please use Chrome or Edge.</div>
 
-  <!-- Firebase SDK (CDN, no build step needed) -->
-  <script type="module">
-    import { initializeApp }                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-    import { getDatabase, ref, onValue }    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
-
-    // ─────────────────────────────────────────────────────────────────────
-    // REPLACE these values with your own Firebase project config.
-    // Get them from: Firebase Console → Project Settings → Your Apps → SDK setup
-    // ─────────────────────────────────────────────────────────────────────
-    const firebaseConfig = {
-      apiKey:            "REPLACE_API_KEY",
-      authDomain:        "REPLACE_PROJECT_ID.firebaseapp.com",
-      databaseURL:       "https://REPLACE_PROJECT_ID-default-rtdb.firebaseio.com",
-      projectId:         "REPLACE_PROJECT_ID",
-      storageBucket:     "REPLACE_PROJECT_ID.appspot.com",
-      messagingSenderId: "REPLACE_SENDER_ID",
-      appId:             "REPLACE_APP_ID",
-    };
+  <script>
+    // ── Config ────────────────────────────────────────────────────────────
+    const BAUD_RATE = 9600;
+    const MIN_VAL   = 0;
+    const MAX_VAL   = 600;   // FSR rarely exceeds this; adjust if needed
     // ─────────────────────────────────────────────────────────────────────
 
-    const canvas = document.getElementById('gauge');
-    const ctx    = canvas.getContext('2d');
-    const rawEl  = document.getElementById('raw-value');
-    const dot    = document.getElementById('dot');
-    const stEl   = document.getElementById('status-text');
+    const canvas  = document.getElementById('gauge');
+    const ctx     = canvas.getContext('2d');
+    const rawEl   = document.getElementById('raw-value');
+    const dot     = document.getElementById('dot');
+    const stEl    = document.getElementById('status-text');
+    const btn     = document.getElementById('connect-btn');
 
-    // ── Layout ──────────────────────────────────────────────────────────
+    // ── Layout ────────────────────────────────────────────────────────────
     const W = 560, H = 300;
     canvas.width  = W;
     canvas.height = H;
-
     const CX      = W / 2;
     const CY      = H - 26;
     const OUTER_R = 238;
@@ -93,11 +104,7 @@
     const MID_R   = (OUTER_R + INNER_R) / 2;
     const ARC_W   = OUTER_R - INNER_R;
 
-    // ── Value range — change to match your Arduino output ───────────────
-    const MIN_VAL = 0, MAX_VAL = 1023;
-
-    // ── Angle mapping ────────────────────────────────────────────────────
-    // π (9 o'clock / "Light") → 2π (3 o'clock / "Excessive") clockwise through top
+    // ── Angle mapping ─────────────────────────────────────────────────────
     function valueToAngle(v) {
       const t = Math.max(0, Math.min(1, (v - MIN_VAL) / (MAX_VAL - MIN_VAL)));
       return Math.PI * (1 + t);
@@ -106,7 +113,7 @@
     let dispAngle   = Math.PI;
     let targetAngle = Math.PI;
 
-    // ── Arc gradient: red → orange → green → orange → red ───────────────
+    // ── Arc gradient: red → orange → green → orange → red ────────────────
     const STOPS = [
       [0.00, [210, 28,   8]],
       [0.22, [255, 115,  0]],
@@ -126,7 +133,7 @@
       return 'rgb(210,28,8)';
     }
 
-    // ── Draw ─────────────────────────────────────────────────────────────
+    // ── Draw ──────────────────────────────────────────────────────────────
     const SEG = 300;
 
     function draw() {
@@ -150,9 +157,9 @@
       ctx.fillStyle    = '#ccc';
       ctx.textBaseline = 'middle';
       ctx.textAlign    = 'left';
-      ctx.fillText('Light', 18, CY + 4);
+      ctx.fillText('No pressure', 18, CY + 4);
       ctx.textAlign = 'right';
-      ctx.fillText('Excessive', W - 18, CY + 4);
+      ctx.fillText('Hard pressure', W - 18, CY + 4);
 
       // Needle
       const nx = CX + MID_R * 0.9 * Math.cos(dispAngle);
@@ -172,34 +179,61 @@
       ctx.fill();
     }
 
-    // ── Animation loop ────────────────────────────────────────────────────
+    // ── Animation loop ─────────────────────────────────────────────────────
     (function loop() {
       dispAngle += (targetAngle - dispAngle) * 0.1;
       draw();
       requestAnimationFrame(loop);
     })();
 
-    // ── Firebase connection ───────────────────────────────────────────────
-    try {
-      const app = initializeApp(firebaseConfig);
-      const db  = getDatabase(app);
-
-      onValue(ref(db, 'sensor/value'), snapshot => {
-        const value = snapshot.val();
-        if (value !== null) {
-          dot.className    = 'on';
-          stEl.textContent = 'Live';
-          targetAngle      = valueToAngle(value);
-          rawEl.textContent = Math.round(value);
-        }
-      }, err => {
-        stEl.textContent = 'DB error: ' + err.message;
-      });
-
-    } catch (e) {
-      stEl.textContent = 'Config error — check firebaseConfig in index.html';
-      console.error(e);
+    // ── Web Serial ─────────────────────────────────────────────────────────
+    if (!('serial' in navigator)) {
+      btn.style.display = 'none';
+      document.getElementById('no-serial').style.display = 'block';
     }
+
+    btn.addEventListener('click', async () => {
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: BAUD_RATE });
+
+        btn.disabled     = true;
+        btn.textContent  = 'Connected';
+        dot.className    = 'on';
+        stEl.textContent = 'Live';
+
+        const decoder  = port.readable.pipeThrough(new TextDecoderStream());
+        const reader   = decoder.getReader();
+        let   buffer   = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += value;
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            // Parses: "FSR Value: 512 -> MEDIUM PRESSURE"
+            const match = line.match(/FSR Value:\s*(\d+)/);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              targetAngle       = valueToAngle(num);
+              rawEl.textContent = num;
+              // Show pressure category from the label after "->"
+              const label = line.split('->')[1];
+              if (label) stEl.textContent = label.trim();
+            }
+          }
+        }
+      } catch (err) {
+        if (err.name !== 'NotFoundError') {
+          stEl.textContent = 'Error: ' + err.message;
+          dot.className    = '';
+          btn.disabled     = false;
+          btn.textContent  = 'Connect to Arduino';
+        }
+      }
+    });
   </script>
 </body>
 </html>
