@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arduino Live Gauge</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+    canvas { display: block; }
+    #raw-value {
+      font-size: 20px;
+      color: #777;
+      letter-spacing: 3px;
+      margin-top: 4px;
+      min-width: 60px;
+      text-align: center;
+    }
+    #status {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #4a4a4a;
+    }
+    #dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #333;
+      transition: background 0.5s, box-shadow 0.5s;
+    }
+    #dot.on {
+      background: #4caf50;
+      box-shadow: 0 0 7px #4caf5088;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gauge"></canvas>
+  <div id="raw-value">—</div>
+  <div id="status">
+    <span id="dot"></span>
+    <span id="status-text">Connecting…</span>
+  </div>
+
+  <!-- Firebase SDK (CDN, no build step needed) -->
+  <script type="module">
+    import { initializeApp }                from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+    import { getDatabase, ref, onValue }    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+    // ─────────────────────────────────────────────────────────────────────
+    // REPLACE these values with your own Firebase project config.
+    // Get them from: Firebase Console → Project Settings → Your Apps → SDK setup
+    // ─────────────────────────────────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "REPLACE_API_KEY",
+      authDomain:        "REPLACE_PROJECT_ID.firebaseapp.com",
+      databaseURL:       "https://REPLACE_PROJECT_ID-default-rtdb.firebaseio.com",
+      projectId:         "REPLACE_PROJECT_ID",
+      storageBucket:     "REPLACE_PROJECT_ID.appspot.com",
+      messagingSenderId: "REPLACE_SENDER_ID",
+      appId:             "REPLACE_APP_ID",
+    };
+    // ─────────────────────────────────────────────────────────────────────
+
+    const canvas = document.getElementById('gauge');
+    const ctx    = canvas.getContext('2d');
+    const rawEl  = document.getElementById('raw-value');
+    const dot    = document.getElementById('dot');
+    const stEl   = document.getElementById('status-text');
+
+    // ── Layout ──────────────────────────────────────────────────────────
+    const W = 560, H = 300;
+    canvas.width  = W;
+    canvas.height = H;
+
+    const CX      = W / 2;
+    const CY      = H - 26;
+    const OUTER_R = 238;
+    const INNER_R = 164;
+    const MID_R   = (OUTER_R + INNER_R) / 2;
+    const ARC_W   = OUTER_R - INNER_R;
+
+    // ── Value range — change to match your Arduino output ───────────────
+    const MIN_VAL = 0, MAX_VAL = 1023;
+
+    // ── Angle mapping ────────────────────────────────────────────────────
+    // π (9 o'clock / "Light") → 2π (3 o'clock / "Excessive") clockwise through top
+    function valueToAngle(v) {
+      const t = Math.max(0, Math.min(1, (v - MIN_VAL) / (MAX_VAL - MIN_VAL)));
+      return Math.PI * (1 + t);
+    }
+
+    let dispAngle   = Math.PI;
+    let targetAngle = Math.PI;
+
+    // ── Arc gradient: red → orange → green → orange → red ───────────────
+    const STOPS = [
+      [0.00, [210, 28,   8]],
+      [0.22, [255, 115,  0]],
+      [0.50, [ 50, 210,  5]],
+      [0.78, [255, 115,  0]],
+      [1.00, [210, 28,   8]],
+    ];
+
+    function arcColor(t) {
+      for (let i = 0; i < STOPS.length - 1; i++) {
+        const [t0, c0] = STOPS[i], [t1, c1] = STOPS[i + 1];
+        if (t <= t1) {
+          const s = (t - t0) / (t1 - t0);
+          return `rgb(${c0[0]+(c1[0]-c0[0])*s|0},${c0[1]+(c1[1]-c0[1])*s|0},${c0[2]+(c1[2]-c0[2])*s|0})`;
+        }
+      }
+      return 'rgb(210,28,8)';
+    }
+
+    // ── Draw ─────────────────────────────────────────────────────────────
+    const SEG = 300;
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Gradient arc
+      ctx.lineCap = 'butt';
+      for (let i = 0; i < SEG; i++) {
+        const t0 = i / SEG, t1 = (i + 1) / SEG;
+        const a0 = Math.PI + t0 * Math.PI;
+        const a1 = Math.PI + t1 * Math.PI;
+        ctx.beginPath();
+        ctx.arc(CX, CY, MID_R, a0, a1, false);
+        ctx.strokeStyle = arcColor(t0 + 0.5 / SEG);
+        ctx.lineWidth   = ARC_W + 1;
+        ctx.stroke();
+      }
+
+      // Labels
+      ctx.font         = '15px -apple-system, sans-serif';
+      ctx.fillStyle    = '#ccc';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign    = 'left';
+      ctx.fillText('Light', 18, CY + 4);
+      ctx.textAlign = 'right';
+      ctx.fillText('Excessive', W - 18, CY + 4);
+
+      // Needle
+      const nx = CX + MID_R * 0.9 * Math.cos(dispAngle);
+      const ny = CY + MID_R * 0.9 * Math.sin(dispAngle);
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.lineTo(nx, ny);
+      ctx.strokeStyle = 'rgba(190, 205, 255, 0.92)';
+      ctx.lineWidth   = 2;
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+
+      // Pivot dot
+      ctx.beginPath();
+      ctx.arc(CX, CY, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+    }
+
+    // ── Animation loop ────────────────────────────────────────────────────
+    (function loop() {
+      dispAngle += (targetAngle - dispAngle) * 0.1;
+      draw();
+      requestAnimationFrame(loop);
+    })();
+
+    // ── Firebase connection ───────────────────────────────────────────────
+    try {
+      const app = initializeApp(firebaseConfig);
+      const db  = getDatabase(app);
+
+      onValue(ref(db, 'sensor/value'), snapshot => {
+        const value = snapshot.val();
+        if (value !== null) {
+          dot.className    = 'on';
+          stEl.textContent = 'Live';
+          targetAngle      = valueToAngle(value);
+          rawEl.textContent = Math.round(value);
+        }
+      }, err => {
+        stEl.textContent = 'DB error: ' + err.message;
+      });
+
+    } catch (e) {
+      stEl.textContent = 'Config error — check firebaseConfig in index.html';
+      console.error(e);
+    }
+  </script>
+</body>
+</html>

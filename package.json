@@ -1,0 +1,19 @@
+{
+  "name": "arduino-gauge",
+  "version": "1.0.0",
+  "description": "Real-time Arduino gauge visualization",
+  "main": "server.js",
+  "scripts": {
+    "bridge": "node bridge.js",
+    "local": "node server.js",
+    "list-ports": "node -e \"require('serialport').SerialPort.list().then(p=>{p.forEach(x=>console.log(x.path,'\\t',x.manufacturer||''));if(!p.length)console.log('No ports found')})\""
+  },
+  "dependencies": {
+    "@serialport/parser-readline": "^12.0.0",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.0",
+    "firebase-admin": "^12.0.0",
+    "serialport": "^12.0.0",
+    "ws": "^8.14.0"
+  }
+}
