@@ -219,6 +219,11 @@
               const num = parseInt(match[1], 10);
               targetAngle       = valueToAngle(num);
               rawEl.textContent = num;
+              fetch('/api/gauge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: num })
+              }).catch(() => {});
               // Show pressure category from the label after "->"
               const label = line.split('->')[1];
               if (label) stEl.textContent = label.trim();
